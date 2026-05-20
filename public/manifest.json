@@ -1,0 +1,43 @@
+{
+  "name": "Memory OS",
+  "short_name": "MemoryOS",
+  "description": "Personal data intelligence system with AI-powered insights",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f0fdfa",
+  "theme_color": "#14b8a6",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon-192x192.jpg",
+      "sizes": "192x192",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512x512.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["health", "fitness", "productivity"],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Ingest Data",
+      "url": "/ingestor",
+      "description": "Paste and save new data"
+    },
+    {
+      "name": "Chat with AI",
+      "url": "/chat",
+      "description": "Ask questions about your data"
+    },
+    {
+      "name": "View Logs",
+      "url": "/explorer",
+      "description": "Browse raw data logs"
+    }
+  ]
+}
