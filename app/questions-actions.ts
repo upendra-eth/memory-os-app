@@ -10,21 +10,35 @@ export interface PendingQuestion {
   options?: string[]
 }
 
-export async function getPendingQuestions(userEmail: string): Promise<PendingQuestion[]> {
+/**
+ * Get the current user's profile ID from auth session
+ */
+async function getAuthProfileId() {
+  const supabase = await createClient()
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
+
+  if (authError || !user) return null
+
+  const { data: profile } = await supabase
+    .from('user_profile')
+    .select('id')
+    .eq('auth_user_id', user.id)
+    .single()
+
+  if (!profile) return null
+
+  return { userId: profile.id, supabase }
+}
+
+export async function getPendingQuestions(): Promise<PendingQuestion[]> {
   try {
-    const supabase = await createClient()
-    const { data: profile } = await supabase
-      .from('user_profile')
-      .select('id')
-      .eq('email', userEmail)
-      .single()
+    const auth = await getAuthProfileId()
+    if (!auth) return []
 
-    if (!profile) return []
-
-    const { data, error } = await supabase
+    const { data, error } = await auth.supabase
       .from('ai_questions')
       .select('id, question, context, expected_action, options')
-      .eq('user_id', profile.id)
+      .eq('user_id', auth.userId)
       .eq('status', 'pending')
       .order('created_at', { ascending: false })
       .limit(5)
@@ -42,24 +56,18 @@ export async function getPendingQuestions(userEmail: string): Promise<PendingQue
 }
 
 export async function answerQuestion(
-  userEmail: string,
   questionId: string,
   answer: string
 ): Promise<{ success: boolean }> {
   try {
-    const supabase = await createClient()
-    const { data: profile } = await supabase
-      .from('user_profile')
-      .select('id')
-      .eq('email', userEmail)
-      .single()
-    if (!profile) return { success: false }
+    const auth = await getAuthProfileId()
+    if (!auth) return { success: false }
 
-    const { error } = await supabase
+    const { error } = await auth.supabase
       .from('ai_questions')
       .update({ status: 'answered', answer, answered_at: new Date().toISOString() })
       .eq('id', questionId)
-      .eq('user_id', profile.id)
+      .eq('user_id', auth.userId)
 
     if (error) {
       console.error('[v0] answerQuestion error:', error)
@@ -73,27 +81,21 @@ export async function answerQuestion(
 }
 
 export async function snoozeQuestion(
-  userEmail: string,
   questionId: string,
   days: number = 7
 ): Promise<{ success: boolean }> {
   try {
-    const supabase = await createClient()
-    const { data: profile } = await supabase
-      .from('user_profile')
-      .select('id')
-      .eq('email', userEmail)
-      .single()
-    if (!profile) return { success: false }
+    const auth = await getAuthProfileId()
+    if (!auth) return { success: false }
 
     const snoozeUntil = new Date()
     snoozeUntil.setDate(snoozeUntil.getDate() + days)
 
-    const { error } = await supabase
+    const { error } = await auth.supabase
       .from('ai_questions')
       .update({ status: 'snoozed', snoozed_until: snoozeUntil.toISOString() })
       .eq('id', questionId)
-      .eq('user_id', profile.id)
+      .eq('user_id', auth.userId)
 
     if (error) {
       console.error('[v0] snoozeQuestion error:', error)

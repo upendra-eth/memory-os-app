@@ -6,11 +6,30 @@ export const maxDuration = 60
 
 export async function POST(req: Request) {
   try {
-    const { question, userId } = await req.json()
+    const supabase = await createClient()
 
-    if (!question || !userId) {
+    // Get authenticated user
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return Response.json({ error: 'Not authenticated' }, { status: 401 })
+    }
+
+    // Get profile ID
+    const { data: profile } = await supabase
+      .from('user_profile')
+      .select('*')
+      .eq('auth_user_id', user.id)
+      .single()
+
+    if (!profile) {
+      return Response.json({ error: 'Profile not found' }, { status: 404 })
+    }
+
+    const { question } = await req.json()
+
+    if (!question) {
       return Response.json(
-        { error: 'Question and userId are required' },
+        { error: 'Question is required' },
         { status: 400 }
       )
     }
@@ -23,17 +42,9 @@ export async function POST(req: Request) {
       )
     }
 
-    // Search for relevant entries
-    const entries = await searchEntries(userId, question, 20)
+    // Search for relevant entries using profile ID
+    const entries = await searchEntries(profile.id, question, 20)
     const context = formatEntriesForContext(entries)
-
-    // Get user profile for additional context
-    const supabase = await createClient()
-    const { data: profile } = await supabase
-      .from('user_profile')
-      .select('*')
-      .eq('id', userId)
-      .single()
 
     const fullContext = `User: ${profile?.display_name || 'User'}\nGoals: ${profile?.fitness_goal || 'Not specified'}\n\nRecent Life Logs:\n${context}`
 
@@ -42,7 +53,7 @@ export async function POST(req: Request) {
 
     // Save to ask_history
     await supabase.from('ask_history').insert({
-      user_id: userId,
+      user_id: profile.id,
       question,
       answer,
       citations: entries.slice(0, 5).map((e) => ({ date: e.created_at, id: e.id })),

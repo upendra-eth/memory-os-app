@@ -1,6 +1,5 @@
 'use client'
 
-import { useState, useEffect } from 'react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -8,16 +7,6 @@ import { Heart, TrendingUp, MessageSquare, FileText } from 'lucide-react'
 import Link from 'next/link'
 
 export default function DashboardPage() {
-  const [userEmail, setUserEmail] = useState<string>('')
-
-  useEffect(() => {
-    // Get user email from localStorage (set during onboarding)
-    const email = localStorage.getItem('user_email')
-    if (email) {
-      setUserEmail(email)
-    }
-  }, [])
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-primary/5 to-background">
       <div className="container mx-auto px-4 py-8">

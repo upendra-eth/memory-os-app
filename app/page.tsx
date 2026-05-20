@@ -3,13 +3,19 @@ import { createClient } from '@/lib/supabase/server'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Activity, Database, MessageSquare, TrendingUp } from 'lucide-react'
 import Link from 'next/link'
+import { ProfilePromptCard } from '@/components/profile-prompt-card'
 
 async function getStats() {
   const supabase = await createClient()
   
+  // Auth check — get user
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { totalLogs: 0, recentLogs: 0, lastUpdate: null }
+
   const now = new Date()
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
   
+  // RLS will automatically scope these queries to the authenticated user
   const { count: totalLogs } = await supabase
     .from('life_logs')
     .select('*', { count: 'exact', head: true })
@@ -60,6 +66,9 @@ export default async function DashboardPage() {
             <h1 className="text-3xl font-bold tracking-tight text-foreground">Dashboard</h1>
             <p className="text-muted-foreground mt-1">Your personal data intelligence at a glance</p>
           </header>
+
+          {/* Daily Profile Prompt */}
+          <ProfilePromptCard />
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <Card className="bg-gradient-to-br from-primary/10 to-primary/5 border-primary/20">

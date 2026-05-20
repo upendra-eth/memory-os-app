@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { Card } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { createClient } from '@/lib/supabase/client'
+import { useAuth } from '@/components/auth-provider'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart, Area, AreaChart } from 'recharts'
 
 interface DailyData {
@@ -20,24 +21,25 @@ export default function NutritionFitnessDashboard() {
   const [tdee, setTdee] = useState(2500)
   const [isLoading, setIsLoading] = useState(true)
   const [range, setRange] = useState<'7d' | '30d' | '90d'>('30d')
+  const { user, profileId, isLoading: authLoading } = useAuth()
 
   useEffect(() => {
+    if (authLoading) return
     const loadData = async () => {
       setIsLoading(true)
       try {
-        const userEmail = localStorage.getItem('user_email')
-        if (!userEmail) {
+        if (!user || !profileId) {
           setIsLoading(false)
           return
         }
 
         const supabase = createClient()
 
-        // Get user profile
+        // Get full profile for TDEE calculation (RLS scopes to current user)
         const { data: profile } = await supabase
           .from('user_profile')
           .select('*')
-          .eq('email', userEmail)
+          .eq('id', profileId)
           .single()
 
         if (!profile) {
@@ -86,7 +88,7 @@ export default function NutritionFitnessDashboard() {
     }
 
     loadData()
-  }, [range])
+  }, [range, user, profileId, authLoading])
 
   if (isLoading) {
     return <Card className="p-8 text-center">Loading...</Card>

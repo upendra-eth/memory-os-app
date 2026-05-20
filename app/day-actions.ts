@@ -4,31 +4,39 @@ import { createClient } from '@/lib/supabase/server'
 import type { Entry, DailyAggregate } from '@/lib/types'
 
 /**
+ * Get the current user's profile ID from auth session
+ */
+async function getAuthProfileId() {
+  const supabase = await createClient()
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
+
+  if (authError || !user) return null
+
+  const { data: profile } = await supabase
+    .from('user_profile')
+    .select('id')
+    .eq('auth_user_id', user.id)
+    .single()
+
+  if (!profile) return null
+
+  return { userId: profile.id, supabase }
+}
+
+/**
  * Fetch entries for a specific date
  */
 export async function getEntriesForDate(
-  userEmail: string,
   date: string
 ): Promise<{ entries: Entry[]; error?: string }> {
   try {
-    const supabase = await createClient()
+    const auth = await getAuthProfileId()
+    if (!auth) return { entries: [], error: 'Not authenticated' }
 
-    // Get user profile
-    const { data: profile, error: profileError } = await supabase
-      .from('user_profile')
-      .select('id')
-      .eq('email', userEmail)
-      .single()
-
-    if (profileError || !profile) {
-      return { entries: [], error: 'User not found' }
-    }
-
-    // Fetch entries for the date
-    const { data: entries, error } = await supabase
+    const { data: entries, error } = await auth.supabase
       .from('entries')
       .select('*')
-      .eq('user_id', profile.id)
+      .eq('user_id', auth.userId)
       .gte('created_at', `${date}T00:00:00`)
       .lt('created_at', `${date}T23:59:59`)
       .order('created_at', { ascending: true })
@@ -49,28 +57,16 @@ export async function getEntriesForDate(
  * Fetch daily aggregate for a specific date
  */
 export async function getDailyAggregate(
-  userEmail: string,
   date: string
 ): Promise<{ aggregate?: DailyAggregate; error?: string }> {
   try {
-    const supabase = await createClient()
+    const auth = await getAuthProfileId()
+    if (!auth) return { error: 'Not authenticated' }
 
-    // Get user profile
-    const { data: profile, error: profileError } = await supabase
-      .from('user_profile')
-      .select('id')
-      .eq('email', userEmail)
-      .single()
-
-    if (profileError || !profile) {
-      return { error: 'User not found' }
-    }
-
-    // Fetch daily aggregate
-    const { data: aggregate, error } = await supabase
+    const { data: aggregate, error } = await auth.supabase
       .from('daily_aggregates')
       .select('*')
-      .eq('user_id', profile.id)
+      .eq('user_id', auth.userId)
       .eq('log_date', date)
       .single()
 
@@ -100,24 +96,16 @@ export interface DayDigest {
  * Returns undefined if no digest has been produced yet.
  */
 export async function getDayDigest(
-  userEmail: string,
   date: string
 ): Promise<{ digest?: DayDigest }> {
   try {
-    const supabase = await createClient()
+    const auth = await getAuthProfileId()
+    if (!auth) return {}
 
-    const { data: profile } = await supabase
-      .from('user_profile')
-      .select('id')
-      .eq('email', userEmail)
-      .single()
-
-    if (!profile) return {}
-
-    const { data: digest, error } = await supabase
+    const { data: digest, error } = await auth.supabase
       .from('day_digests')
       .select('*')
-      .eq('user_id', profile.id)
+      .eq('user_id', auth.userId)
       .eq('digest_date', date)
       .single()
 
@@ -136,14 +124,15 @@ export async function getDayDigest(
 /**
  * Get TDEE for user to calculate calorie surplus/deficit
  */
-export async function getUserTDEE(userEmail: string): Promise<number | null> {
+export async function getUserTDEE(): Promise<number | null> {
   try {
-    const supabase = await createClient()
+    const auth = await getAuthProfileId()
+    if (!auth) return null
 
-    const { data: profile, error } = await supabase
+    const { data: profile, error } = await auth.supabase
       .from('user_profile')
       .select('current_weight_kg, height_cm, age, gender, activity_level')
-      .eq('email', userEmail)
+      .eq('id', auth.userId)
       .single()
 
     if (error || !profile) {

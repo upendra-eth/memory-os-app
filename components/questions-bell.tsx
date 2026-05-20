@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Bell } from 'lucide-react'
 import { AIQuestionsModal } from '@/components/ai-questions-modal'
+import { useAuth } from '@/components/auth-provider'
 import {
   getPendingQuestions,
   answerQuestion,
@@ -13,23 +14,21 @@ export function QuestionsBell() {
   const [questions, setQuestions] = useState<PendingQuestion[]>([])
   const [isOpen, setIsOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
+  const { user } = useAuth()
 
   useEffect(() => {
     setMounted(true)
-    const userEmail = typeof window !== 'undefined' ? localStorage.getItem('user_email') : null
-    if (!userEmail) return
+    if (!user) return
 
-    getPendingQuestions(userEmail)
+    getPendingQuestions()
       .then(setQuestions)
       .catch((err) => console.error('[v0] questions fetch failed:', err))
-  }, [])
+  }, [user])
 
   if (!mounted || questions.length === 0) return null
 
   const handleAnswer = async (questionId: string, answer: string) => {
-    const userEmail = localStorage.getItem('user_email')
-    if (!userEmail) return
-    await answerQuestion(userEmail, questionId, answer)
+    await answerQuestion(questionId, answer)
     setQuestions((prev) => prev.filter((q) => q.id !== questionId))
   }
 

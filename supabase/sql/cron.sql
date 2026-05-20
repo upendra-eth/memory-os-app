@@ -23,6 +23,7 @@ SELECT cron.schedule(
       'Authorization', 'Bearer ' || :'service_key'
     ),
     body := '{}'::jsonb
+    
   );
   $$
 );

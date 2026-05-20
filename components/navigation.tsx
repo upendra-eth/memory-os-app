@@ -3,7 +3,9 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
-import { Brain, Plus, MessageSquare, Database, BookOpen, Clock, User, CheckSquare, Stethoscope } from 'lucide-react'
+import { useAuth } from '@/components/auth-provider'
+import { Brain, Plus, MessageSquare, Database, BookOpen, Clock, User, CheckSquare, Stethoscope, LogOut, Loader2 } from 'lucide-react'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: Brain },
@@ -19,10 +21,15 @@ const navItems = [
 
 export function Navigation() {
   const pathname = usePathname()
+  const { user, signOut, isLoading } = useAuth()
+
+  const displayName = user?.user_metadata?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'User'
+  const initials = displayName.slice(0, 2).toUpperCase()
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80 md:static md:border-t-0 md:border-r md:h-screen md:w-64 md:flex-shrink-0">
-      <div className="flex items-center justify-around py-2 md:flex-col md:items-stretch md:justify-start md:p-4 md:gap-2">
+      <div className="flex items-center justify-around py-2 md:flex-col md:items-stretch md:justify-start md:p-4 md:gap-2 md:h-full">
+        {/* Desktop Logo */}
         <div className="hidden md:flex items-center gap-3 px-4 py-4 mb-4">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground">
             <Brain className="h-6 w-6" />
@@ -53,6 +60,28 @@ export function Navigation() {
             </Link>
           )
         })}
+
+        {/* User section — desktop only */}
+        <div className="hidden md:flex md:flex-col md:mt-auto md:pt-4 md:border-t md:border-border">
+          <div className="flex items-center gap-3 px-4 py-3">
+            <Avatar className="h-8 w-8">
+              <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
+                {initials}
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium truncate">{displayName}</p>
+              <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
+            </div>
+          </div>
+          <button
+            onClick={() => signOut()}
+            className="flex items-center gap-3 px-4 py-3 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
+          >
+            <LogOut className="h-5 w-5" />
+            <span className="text-sm font-medium">Sign Out</span>
+          </button>
+        </div>
       </div>
     </nav>
   )

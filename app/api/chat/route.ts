@@ -38,6 +38,14 @@ Strictly return ONLY the JSON object, no additional text or markdown.`
 
 export async function POST(req: Request) {
   try {
+    const supabase = await createClient()
+
+    // Get authenticated user
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return Response.json({ error: 'Not authenticated' }, { status: 401 })
+    }
+
     const { question } = await req.json()
 
     if (!question || typeof question !== 'string') {
@@ -52,8 +60,7 @@ export async function POST(req: Request) {
       )
     }
 
-    // Fetch logs from the last 14 days
-    const supabase = await createClient()
+    // Fetch logs from the last 14 days (RLS ensures only this user's data)
     const cutoffDate = new Date()
     cutoffDate.setDate(cutoffDate.getDate() - 14)
 

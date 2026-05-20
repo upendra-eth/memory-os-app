@@ -9,15 +9,41 @@ import { detectMedical, buildMedicalAuditItems } from '@/lib/entity-detection'
 const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY
 
 /**
+ * Get the current user's profile ID from auth session
+ */
+async function getAuthProfileId(): Promise<{ userId: string; supabase: any } | null> {
+  const supabase = await createClient()
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
+
+  if (authError || !user) {
+    return null
+  }
+
+  const { data: profile } = await supabase
+    .from('user_profile')
+    .select('id')
+    .eq('auth_user_id', user.id)
+    .single()
+
+  if (!profile) {
+    return null
+  }
+
+  return { userId: profile.id, supabase }
+}
+
+/**
  * Get list of known entities from database
  */
 export async function getKnownEntities(): Promise<Record<string, string[]>> {
   try {
-    const supabase = await createClient()
+    const auth = await getAuthProfileId()
+    if (!auth) return { people: [], foods: [], exercises: [], places: [] }
 
-    const { data: entities, error } = await supabase
+    const { data: entities, error } = await auth.supabase
       .from('entities')
       .select('entity_type, entity_name')
+      .eq('user_id', auth.userId)
 
     if (error) {
       console.error('Error fetching entities:', error)
@@ -115,10 +141,10 @@ export async function generateEmbedding(text: string): Promise<number[]> {
 }
 
 /**
- * Save entry to database with all related data
+ * Save entry to database with all related data.
+ * Uses auth session to determine user — no email parameter needed.
  */
 export async function saveEntry(params: {
-  user_email: string
   rawText: string
   narrative: string
   extractedJson: ExtractedJSON
@@ -129,20 +155,12 @@ export async function saveEntry(params: {
   error?: string
 }> {
   try {
-    const supabase = await createClient()
-
-    // Get user profile
-    const { data: profile, error: profileError } = await supabase
-      .from('user_profile')
-      .select('id')
-      .eq('email', params.user_email)
-      .single()
-
-    if (profileError || !profile) {
-      return { success: false, error: 'User profile not found' }
+    const auth = await getAuthProfileId()
+    if (!auth) {
+      return { success: false, error: 'Not authenticated or profile not found' }
     }
 
-    const userId = profile.id
+    const { userId, supabase } = auth
 
     // Generate embedding
     const embedding = await generateEmbedding(params.narrative)

@@ -2,25 +2,25 @@
 
 import { useEffect, useState } from 'react'
 import { DailyReminder } from '@/components/daily-reminder'
+import { useAuth } from '@/components/auth-provider'
 import { initializeDailyReminder } from '@/lib/notification-store'
 
 export function ReminderWrapper({ children }: { children: React.ReactNode }) {
-  const [userId, setUserId] = useState<string>('')
+  const { user, isLoading } = useAuth()
+  const [initialized, setInitialized] = useState(false)
 
   useEffect(() => {
-    // Get user ID from localStorage (set during onboarding)
-    const email = localStorage.getItem('user_email')
-    if (email) {
-      setUserId(email)
+    if (user?.email && !initialized) {
       // Initialize reminder if not already set
-      initializeDailyReminder(email, '09:00')
+      initializeDailyReminder(user.email, '09:00')
+      setInitialized(true)
     }
-  }, [])
+  }, [user, initialized])
 
   return (
     <>
       {children}
-      {userId && <DailyReminder userId={userId} />}
+      {user?.email && <DailyReminder userId={user.email} />}
     </>
   )
 }

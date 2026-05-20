@@ -11,6 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { saveUserProfile, type OnboardingFormData } from '@/app/onboarding-actions'
 import { calculateHealthMetrics } from '@/lib/health-metrics'
 import { useToast } from '@/hooks/use-toast'
+import { useAuth } from '@/components/auth-provider'
 
 type Step = 'personal' | 'physical' | 'health' | 'goals' | 'review'
 
@@ -37,10 +38,13 @@ export function OnboardingForm({ onComplete }: { onComplete?: () => void }) {
   const [currentStep, setCurrentStep] = useState<Step>('personal')
   const [isPending, startTransition] = useTransition()
   const { toast } = useToast()
+  const { user } = useAuth()
+
+  // Pre-fill display name from auth metadata
+  const authDisplayName = user?.user_metadata?.display_name || user?.user_metadata?.full_name || ''
 
   const [formData, setFormData] = useState<OnboardingFormData>({
-    email: '',
-    display_name: '',
+    display_name: authDisplayName,
     age: 30,
     gender: 'male',
     height_cm: 180,
@@ -88,13 +92,10 @@ export function OnboardingForm({ onComplete }: { onComplete?: () => void }) {
     startTransition(async () => {
       const result = await saveUserProfile(formData)
       if (result.success) {
-        // Save email to localStorage for future reference
-        localStorage.setItem('user_email', formData.email)
-        
         // Initialize daily reminder
         try {
           const { initializeDailyReminder } = await import('@/lib/notification-store')
-          initializeDailyReminder(formData.email, '09:00')
+          initializeDailyReminder(user?.email || '', '09:00')
         } catch (error) {
           console.error('[v0] Failed to initialize reminder:', error)
         }
@@ -123,6 +124,9 @@ export function OnboardingForm({ onComplete }: { onComplete?: () => void }) {
           <p className="text-muted-foreground">
             {STEPS[stepIndex].title}: {STEPS[stepIndex].description}
           </p>
+          {user?.email && (
+            <p className="text-sm text-primary">Signed in as {user.email}</p>
+          )}
         </div>
 
         {/* Progress */}
@@ -157,16 +161,6 @@ export function OnboardingForm({ onComplete }: { onComplete?: () => void }) {
         <Card className="p-6">
           {currentStep === 'personal' && (
             <div className="space-y-4">
-              <div>
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => handleInputChange('email', e.target.value)}
-                  placeholder="your.email@example.com"
-                />
-              </div>
               <div>
                 <Label htmlFor="display_name">Display Name</Label>
                 <Input
@@ -336,7 +330,7 @@ export function OnboardingForm({ onComplete }: { onComplete?: () => void }) {
                     <strong>Name:</strong> {formData.display_name}
                   </p>
                   <p>
-                    <strong>Email:</strong> {formData.email}
+                    <strong>Email:</strong> {user?.email}
                   </p>
                   <p>
                     <strong>Age:</strong> {formData.age} years
@@ -410,7 +404,7 @@ export function OnboardingForm({ onComplete }: { onComplete?: () => void }) {
           {currentStep === 'review' ? (
             <Button
               onClick={handleSubmit}
-              disabled={isPending || !formData.email || !formData.display_name}
+              disabled={isPending || !formData.display_name}
               className="flex-1"
             >
               {isPending ? 'Completing...' : 'Complete Onboarding'}
@@ -433,7 +427,7 @@ export function OnboardingForm({ onComplete }: { onComplete?: () => void }) {
 function canProceedToNext(step: Step, data: OnboardingFormData): boolean {
   switch (step) {
     case 'personal':
-      return !!(data.email && data.display_name && data.age > 0)
+      return !!(data.display_name && data.age > 0)
     case 'physical':
       return !!(data.height_cm > 0 && data.current_weight_kg > 0 && data.target_weight_kg > 0 && data.activity_level)
     case 'health':

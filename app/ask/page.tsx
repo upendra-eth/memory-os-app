@@ -1,29 +1,24 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useAuth } from '@/components/auth-provider'
 import { AskInterface } from '@/components/ask-interface'
 import { Spinner } from '@/components/ui/spinner'
 
 export default function AskPage() {
-  const [userId, setUserId] = useState<string>('')
-  const [loading, setLoading] = useState(true)
+  const { user, profileId, isLoading } = useAuth()
 
-  useEffect(() => {
-    const email = localStorage.getItem('user_email')
-    if (email) {
-      // Get user ID from email (stored in onboarding)
-      // For now, use email as identifier or fetch from Supabase
-      setUserId(email)
-      setLoading(false)
-    } else {
-      setLoading(false)
-    }
-  }, [])
-
-  if (loading || !userId) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen">
         <Spinner />
+      </div>
+    )
+  }
+
+  if (!user) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <p className="text-muted-foreground">Please sign in to use Ask mode.</p>
       </div>
     )
   }
@@ -36,7 +31,7 @@ export default function AskPage() {
           Search your life logs and get AI-powered insights
         </p>
       </div>
-      <AskInterface userId={userId} />
+      <AskInterface userId={profileId || ''} />
     </div>
   )
 }

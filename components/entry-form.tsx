@@ -64,15 +64,8 @@ export function EntryForm() {
           return
         }
 
-        const userEmail = localStorage.getItem('user_email')
-        if (!userEmail) {
-          setParseError('User email not found. Please complete onboarding.')
-          return
-        }
-
         setProcessingStep('Saving to database...')
         const saveResult = await saveEntry({
-          user_email: userEmail,
           rawText: parsed.raw,
           narrative: parsed.narrative,
           extractedJson: normResult.data,

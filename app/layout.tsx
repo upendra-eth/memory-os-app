@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { Toaster } from 'sonner'
+import { AuthProvider } from '@/components/auth-provider'
 import { ReminderWrapper } from '@/components/reminder-wrapper'
 import { PWAInstaller } from '@/components/pwa-installer'
 import { QuestionsBell } from '@/components/questions-bell'
@@ -54,8 +55,10 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} bg-background`}>
       <body className="font-sans antialiased min-h-screen">
-        <ReminderWrapper>{children}</ReminderWrapper>
-        <QuestionsBell />
+        <AuthProvider>
+          <ReminderWrapper>{children}</ReminderWrapper>
+          <QuestionsBell />
+        </AuthProvider>
         <PWAInstaller />
         <Toaster position="top-center" richColors />
         {process.env.NODE_ENV === 'production' && <Analytics />}

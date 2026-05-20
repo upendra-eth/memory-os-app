@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { Card } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { createClient } from '@/lib/supabase/client'
+import { useAuth } from '@/components/auth-provider'
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 
 interface DailyData {
@@ -22,41 +23,30 @@ export default function BodyMoodDashboard() {
   const [data, setData] = useState<DailyData[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [range, setRange] = useState<'7d' | '30d' | '90d'>('30d')
+  const { profileId, isLoading: authLoading } = useAuth()
 
   useEffect(() => {
+    if (authLoading) return
     const loadData = async () => {
       setIsLoading(true)
       try {
-        const userEmail = localStorage.getItem('user_email')
-        if (!userEmail) {
+        if (!profileId) {
           setIsLoading(false)
           return
         }
 
         const supabase = createClient()
 
-        // Get user profile
-        const { data: profile } = await supabase
-          .from('user_profile')
-          .select('id')
-          .eq('email', userEmail)
-          .single()
-
-        if (!profile) {
-          setIsLoading(false)
-          return
-        }
-
         // Calculate date range
         const days = range === '7d' ? 7 : range === '30d' ? 30 : 90
         const startDate = new Date()
         startDate.setDate(startDate.getDate() - days)
 
-        // Fetch aggregates
+        // Fetch aggregates (RLS scopes to this user)
         const { data: aggregates } = await supabase
           .from('daily_aggregates')
           .select('*')
-          .eq('user_id', profile.id)
+          .eq('user_id', profileId)
           .gte('log_date', startDate.toISOString().split('T')[0])
           .order('log_date', { ascending: true })
 
@@ -79,7 +69,7 @@ export default function BodyMoodDashboard() {
     }
 
     loadData()
-  }, [range])
+  }, [range, profileId, authLoading])
 
   if (isLoading) {
     return <Card className="p-8 text-center">Loading...</Card>

@@ -4,7 +4,6 @@ import { createClient } from '@/lib/supabase/server'
 import type { UserProfile, Gender, ActivityLevel, NutritionGoal } from '@/lib/types'
 
 export interface OnboardingFormData {
-  email: string
   display_name: string
   age: number
   gender: Gender
@@ -20,7 +19,8 @@ export interface OnboardingFormData {
 }
 
 /**
- * Create or update user profile during onboarding
+ * Create or update user profile during onboarding.
+ * Uses auth session to link profile to the authenticated user.
  */
 export async function saveUserProfile(data: OnboardingFormData): Promise<{
   success: boolean
@@ -30,11 +30,19 @@ export async function saveUserProfile(data: OnboardingFormData): Promise<{
   try {
     const supabase = await createClient()
 
+    // Get authenticated user
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return { success: false, error: 'Not authenticated' }
+    }
+
+    const email = user.email || ''
+
     // Check if user profile already exists
-    const { data: existingProfile, error: fetchError } = await supabase
+    const { data: existingProfile } = await supabase
       .from('user_profile')
       .select('id')
-      .eq('email', data.email)
+      .eq('auth_user_id', user.id)
       .single()
 
     let profile: UserProfile
@@ -70,11 +78,12 @@ export async function saveUserProfile(data: OnboardingFormData): Promise<{
 
       profile = updated as UserProfile
     } else {
-      // Create new profile
+      // Create new profile linked to auth user
       const { data: created, error: insertError } = await supabase
         .from('user_profile')
         .insert({
-          email: data.email,
+          auth_user_id: user.id,
+          email,
           display_name: data.display_name,
           age: data.age,
           gender: data.gender,
@@ -111,16 +120,21 @@ export async function saveUserProfile(data: OnboardingFormData): Promise<{
 }
 
 /**
- * Get user profile if exists
+ * Get user profile using auth session
  */
-export async function getUserProfile(email: string): Promise<UserProfile | null> {
+export async function getUserProfile(): Promise<UserProfile | null> {
   try {
     const supabase = await createClient()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+
+    if (authError || !user) {
+      return null
+    }
 
     const { data: profile, error } = await supabase
       .from('user_profile')
       .select('*')
-      .eq('email', email)
+      .eq('auth_user_id', user.id)
       .single()
 
     if (error) {
@@ -138,9 +152,9 @@ export async function getUserProfile(email: string): Promise<UserProfile | null>
 }
 
 /**
- * Check if onboarding is completed
+ * Check if onboarding is completed for the current auth user
  */
-export async function isOnboardingCompleted(email: string): Promise<boolean> {
-  const profile = await getUserProfile(email)
+export async function isOnboardingCompleted(): Promise<boolean> {
+  const profile = await getUserProfile()
   return profile?.onboarding_completed || false
 }

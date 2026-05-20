@@ -55,17 +55,11 @@ export default function DayPage({ params }: DayPageProps) {
     const loadData = async () => {
       setIsLoading(true)
       try {
-        const userEmail = localStorage.getItem('user_email')
-        if (!userEmail) {
-          setIsLoading(false)
-          return
-        }
-
         const [entriesResult, aggregateResult, tdeeResult, digestResult] = await Promise.all([
-          getEntriesForDate(userEmail, currentDate),
-          getDailyAggregate(userEmail, currentDate),
-          getUserTDEE(userEmail),
-          getDayDigest(userEmail, currentDate),
+          getEntriesForDate(currentDate),
+          getDailyAggregate(currentDate),
+          getUserTDEE(),
+          getDayDigest(currentDate),
         ])
 
         setEntries(entriesResult.entries || [])
