@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -12,7 +12,7 @@ import { Separator } from '@/components/ui/separator'
 import { Brain, Mail, Lock, Github, Loader2, AlertCircle, Sparkles } from 'lucide-react'
 import { signInWithPassword, signInWithProvider } from '@/app/auth/auth-actions'
 
-export default function LoginPage() {
+function LoginForm() {
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [socialLoading, setSocialLoading] = useState<string | null>(null)
@@ -189,5 +189,19 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-gradient-to-br from-background via-primary/5 to-accent/5 flex items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        </div>
+      }
+    >
+      <LoginForm />
+    </Suspense>
   )
 }
