@@ -9,6 +9,11 @@ __v0_jsx-dev-runtime.ts
 # Environment variables
 .env*.local
 
+# Credentials / secrets — never commit
+client_secret_*.json
+*.pem
+*.key
+
 # Common ignores
 node_modules
 .next/
