@@ -42,7 +42,7 @@ export function EntryForm() {
   const [dayStatus, setDayStatus] = useState<DayStatus | null>(null)
   const [isPending, startTransition] = useTransition()
   const [parseError, setParseError] = useState<string | null>(null)
-  const [savedEntry, setSavedEntry] = useState<{ id: string; summary: string; auditCount: number; logDate?: string } | null>(null)
+  const [savedEntry, setSavedEntry] = useState<{ id: string; summary: string; logDate?: string } | null>(null)
   const [processingStep, setProcessingStep] = useState<string>('')
   const [pending, setPending] = useState<PendingEntry[]>([])
   const [retryingId, setRetryingId] = useState<string | null>(null)
@@ -112,13 +112,12 @@ export function EntryForm() {
         setSavedEntry({
           id: result.entryId || '',
           summary: result.summary || 'Entry saved',
-          auditCount: result.auditCount || 0,
           logDate: result.logDate,
         })
         setProcessingStep('')
         toast({
           title: 'Success!',
-          description: `Saved to ${result.logDate || 'today'} with ${result.auditCount || 0} items to review`,
+          description: `Saved to ${result.logDate || 'today'}`,
         })
         return true
       } catch (error) {
@@ -174,7 +173,7 @@ export function EntryForm() {
           <li>Paste output from ChatGPT with === RAW ===, === NARRATIVE ===, === EXTRACTED === sections</li>
           <li>Click Save to parse and normalize the data</li>
           <li>Gemini will intelligently extract structured data from the EXTRACTED section</li>
-          <li>Review and confirm any flagged items in the Audit Inbox</li>
+          <li>Your entry is added to your timeline and dashboards automatically</li>
         </ol>
       </Card>
 
@@ -282,11 +281,6 @@ export function EntryForm() {
               </p>
             </div>
             <p className="text-sm text-emerald-800">{savedEntry.summary}</p>
-            {savedEntry.auditCount > 0 && (
-              <p className="text-sm text-emerald-700">
-                <strong>{savedEntry.auditCount}</strong> items need your review in the Audit Inbox
-              </p>
-            )}
           </div>
         </Card>
       )}

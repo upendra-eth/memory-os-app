@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/components/auth-provider'
-import { Brain, Plus, MessageSquare, Clock, User, CheckSquare, Stethoscope, LogOut, Dumbbell, TrendingUp, Sparkles } from 'lucide-react'
+import { Brain, Plus, MessageSquare, Clock, User, Stethoscope, LogOut, Dumbbell, TrendingUp, Sparkles } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 
 const navItems = [
@@ -15,7 +15,6 @@ const navItems = [
   { href: '/insights', label: 'Insights', icon: Sparkles },
   { href: '/timeline', label: 'Timeline', icon: Clock },
   { href: '/ask', label: 'Ask', icon: MessageSquare },
-  { href: '/audit', label: 'Audit', icon: CheckSquare },
   { href: '/lab-reports', label: 'Labs', icon: Stethoscope },
   { href: '/profile', label: 'Profile', icon: User },
 ]

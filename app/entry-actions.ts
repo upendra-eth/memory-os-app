@@ -5,7 +5,6 @@ import { createClient } from '@/lib/supabase/server'
 import { getNormalizerPrompt } from '@/lib/prompts/normalizer'
 import type { ExtractedJSON } from '@/lib/extraction-schema'
 import { sanitizeExtractedJSON, isEmptyExtractedJSON } from '@/lib/extraction-schema'
-import { detectMedical, buildMedicalAuditItems } from '@/lib/entity-detection'
 import { parseThreeSectionPaste } from '@/lib/parse-entry'
 
 const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY
@@ -233,7 +232,6 @@ export async function saveEntry(params: {
 }): Promise<{
   success: boolean
   entryId?: string
-  auditCount?: number
   logDate?: string
   error?: string
 }> {
@@ -297,32 +295,11 @@ export async function saveEntry(params: {
     // The entry row is now persisted. Everything below is a best-effort
     // side-effect — a failure here must NOT lose the user's saved entry, so
     // each block is isolated and only logs on error.
-    let auditCount = 0
-
     if (extractedJson.entities) {
       try {
         await processEntities(userId, extractedJson.entities, supabase)
       } catch (e) {
         console.error('[entry-actions] processEntities failed (entry still saved):', e)
-      }
-    }
-
-    if (extractedJson.audit && extractedJson.audit.length > 0) {
-      auditCount = await createAuditItems(userId, entry.id, extractedJson.audit, supabase)
-    }
-
-    // Phase 12: medical detector — flag medications / conditions / symptoms for profile sync
-    if (params.narrative.trim()) {
-      try {
-        const detection = await detectMedical(params.narrative)
-        const medicalItems = buildMedicalAuditItems(userId, entry.id, detection)
-        if (medicalItems.length > 0) {
-          const { error: medErr } = await supabase.from('audit_items').insert(medicalItems)
-          if (!medErr) auditCount += medicalItems.length
-          else console.error('[v0] Medical audit insert error:', medErr)
-        }
-      } catch (e) {
-        console.error('[entry-actions] medical detection failed (entry still saved):', e)
       }
     }
 
@@ -334,7 +311,7 @@ export async function saveEntry(params: {
       console.error('[entry-actions] updateDailyAggregates failed (entry still saved):', e)
     }
 
-    return { success: true, entryId: entry.id, auditCount, logDate: effectiveDate }
+    return { success: true, entryId: entry.id, logDate: effectiveDate }
   } catch (error) {
     console.error('Save entry error:', error)
     return {
@@ -359,7 +336,6 @@ export async function processAndSaveEntry(
 ): Promise<{
   success: boolean
   entryId?: string
-  auditCount?: number
   summary?: string
   logDate?: string
   error?: string
@@ -400,7 +376,6 @@ export async function processAndSaveEntry(
   return {
     success: true,
     entryId: saveResult.entryId,
-    auditCount: saveResult.auditCount ?? 0,
     summary: generateSummary(normResult.data),
     logDate: saveResult.logDate,
   }
@@ -510,38 +485,6 @@ async function processEntities(
           onConflict: ['user_id', 'entity_type', 'entity_name'],
         }
       )
-  }
-}
-
-/**
- * Create audit items from extracted data
- */
-async function createAuditItems(
-  userId: string,
-  entryId: string,
-  auditItems: any[],
-  supabase: any
-): Promise<number> {
-  try {
-    const itemsToInsert = auditItems.map((item) => ({
-      user_id: userId,
-      entry_id: entryId,
-      audit_type: item.reason,
-      status: 'pending',
-      suggested_value: { field: item.field, reason: item.reason },
-    }))
-
-    const { data, error } = await supabase.from('audit_items').insert(itemsToInsert)
-
-    if (error) {
-      console.error('Audit insert error:', error)
-      return 0
-    }
-
-    return itemsToInsert.length
-  } catch (error) {
-    console.error('Create audit items error:', error)
-    return 0
   }
 }
 
