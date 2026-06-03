@@ -103,13 +103,14 @@ async function keywordSearch(
 export async function generateAnswer(
   question: string,
   context: string,
-  apiKey: string
+  apiKey: string,
+  conversationHistory: string = ''
 ): Promise<string> {
   const genAI = new GoogleGenerativeAI(apiKey)
   const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' })
 
   const { askPrompt } = await import('@/lib/prompts/ask')
-  const prompt = askPrompt(question, context)
+  const prompt = askPrompt(question, context, conversationHistory)
 
   const result = await model.generateContent(prompt)
   return result.response.text()

@@ -25,7 +25,7 @@ export async function POST(req: Request) {
       return Response.json({ error: 'Profile not found' }, { status: 404 })
     }
 
-    const { question } = await req.json()
+    const { question, history } = await req.json()
 
     if (!question) {
       return Response.json(
@@ -33,6 +33,16 @@ export async function POST(req: Request) {
         { status: 400 }
       )
     }
+
+    // Format the recent conversation turns so follow-up questions have context.
+    const conversationHistory = Array.isArray(history)
+      ? history
+          .slice(-6)
+          .map((m: { role: string; content: string }) =>
+            `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`,
+          )
+          .join('\n')
+      : ''
 
     const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY
     if (!apiKey) {
@@ -49,7 +59,7 @@ export async function POST(req: Request) {
     const fullContext = `User: ${profile?.display_name || 'User'}\nGoals: ${profile?.fitness_goal || 'Not specified'}\n\nRecent Life Logs:\n${context}`
 
     // Generate answer using Gemini
-    const answer = await generateAnswer(question, fullContext, apiKey)
+    const answer = await generateAnswer(question, fullContext, apiKey, conversationHistory)
 
     // Save to ask_history
     await supabase.from('ask_history').insert({

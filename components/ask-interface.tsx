@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
@@ -28,6 +28,12 @@ export function AskInterface({ userId }: AskInterfaceProps) {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const { toast } = useToast()
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  // Keep the latest message in view as the conversation grows.
+  useEffect(() => {
+    scrollRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages, loading])
 
   const suggestedQuestions = [
     'How was my gym performance this week?',
@@ -39,6 +45,10 @@ export function AskInterface({ userId }: AskInterfaceProps) {
   const handleSendMessage = async (text: string = input) => {
     if (!text.trim()) return
 
+    // Capture the prior turns before appending the new question so the model
+    // can resolve follow-ups ("what about last week?").
+    const history = messages.map((m) => ({ role: m.role, content: m.content }))
+
     setInput('')
     setMessages((prev) => [...prev, { role: 'user', content: text }])
     setLoading(true)
@@ -47,7 +57,7 @@ export function AskInterface({ userId }: AskInterfaceProps) {
       const response = await fetch('/api/ask', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: text, userId }),
+        body: JSON.stringify({ question: text, userId, history }),
       })
 
       if (!response.ok) {
@@ -118,6 +128,15 @@ export function AskInterface({ userId }: AskInterfaceProps) {
             </div>
           ))
         )}
+        {loading && (
+          <div className="flex justify-start">
+            <Card className="max-w-lg p-4 bg-secondary flex items-center gap-2">
+              <Spinner className="w-4 h-4" />
+              <span className="text-sm text-muted-foreground">Searching your memory…</span>
+            </Card>
+          </div>
+        )}
+        <div ref={scrollRef} />
       </div>
 
       {/* Input area */}
