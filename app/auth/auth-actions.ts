@@ -60,26 +60,10 @@ export async function signUpWithPassword(formData: FormData) {
   redirect('/onboarding')
 }
 
-export async function signInWithProvider(provider: 'google' | 'github') {
-  const supabase = await createClient()
-  const headersList = await headers()
-  const origin = headersList.get('origin') || 'http://localhost:3000'
-
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider,
-    options: {
-      redirectTo: `${origin}/auth/callback`,
-    },
-  })
-
-  if (error) {
-    return { error: error.message }
-  }
-
-  if (data.url) {
-    redirect(data.url)
-  }
-}
+// OAuth (Google/GitHub) is initiated from the browser client in the login and
+// signup pages — see app/auth/login/page.tsx. Doing it client-side persists the
+// PKCE code verifier reliably so /auth/callback can exchange the code. Running
+// signInWithOAuth from a server action dropped the verifier and broke the flow.
 
 export async function signOut() {
   const supabase = await createClient()

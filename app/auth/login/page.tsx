@@ -10,7 +10,8 @@ import { Card } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Separator } from '@/components/ui/separator'
 import { Brain, Mail, Lock, Github, Loader2, AlertCircle, Sparkles } from 'lucide-react'
-import { signInWithPassword, signInWithProvider } from '@/app/auth/auth-actions'
+import { signInWithPassword } from '@/app/auth/auth-actions'
+import { createClient } from '@/lib/supabase/client'
 
 function LoginForm() {
   const [error, setError] = useState<string | null>(null)
@@ -18,6 +19,7 @@ function LoginForm() {
   const [socialLoading, setSocialLoading] = useState<string | null>(null)
   const searchParams = useSearchParams()
   const redirectTo = searchParams.get('redirectTo') || '/dashboard'
+  const urlError = searchParams.get('error')
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -38,11 +40,22 @@ function LoginForm() {
     setSocialLoading(provider)
     setError(null)
 
-    const result = await signInWithProvider(provider)
-    if (result?.error) {
-      setError(result.error)
+    // Initiate OAuth from the browser client so the PKCE code verifier is
+    // persisted reliably and the /auth/callback exchange can succeed.
+    const supabase = createClient()
+    const next = redirectTo !== '/dashboard' ? `?next=${encodeURIComponent(redirectTo)}` : ''
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider,
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback${next}`,
+      },
+    })
+
+    if (error) {
+      setError(error.message)
       setSocialLoading(null)
     }
+    // On success the browser is redirected to the provider; nothing more to do.
   }
 
   return (
@@ -70,10 +83,14 @@ function LoginForm() {
               <p className="text-sm text-muted-foreground mt-1">Sign in to access your life intelligence</p>
             </div>
 
-            {error && (
+            {(error || urlError) && (
               <Alert variant="destructive" className="animate-in slide-in-from-top-2">
                 <AlertCircle className="h-4 w-4" />
-                <AlertDescription>{error}</AlertDescription>
+                <AlertDescription>
+                  {error || (urlError === 'auth_callback_failed'
+                    ? 'Sign-in could not be completed. Please try again.'
+                    : urlError)}
+                </AlertDescription>
               </Alert>
             )}
 

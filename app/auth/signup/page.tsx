@@ -9,7 +9,8 @@ import { Card } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Separator } from '@/components/ui/separator'
 import { Brain, Mail, Lock, User, Github, Loader2, AlertCircle, Sparkles, Shield, Zap, BarChart3, MailCheck } from 'lucide-react'
-import { signUpWithPassword, signInWithProvider } from '@/app/auth/auth-actions'
+import { signUpWithPassword } from '@/app/auth/auth-actions'
+import { createClient } from '@/lib/supabase/client'
 
 export default function SignUpPage() {
   const [error, setError] = useState<string | null>(null)
@@ -55,11 +56,21 @@ export default function SignUpPage() {
     setSocialLoading(provider)
     setError(null)
 
-    const result = await signInWithProvider(provider)
-    if (result?.error) {
-      setError(result.error)
+    // Initiate OAuth from the browser client so the PKCE code verifier is
+    // persisted reliably and the /auth/callback exchange can succeed.
+    const supabase = createClient()
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider,
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`,
+      },
+    })
+
+    if (error) {
+      setError(error.message)
       setSocialLoading(null)
     }
+    // On success the browser is redirected to the provider; nothing more to do.
   }
 
   const features = [
