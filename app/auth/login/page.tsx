@@ -1,7 +1,8 @@
 'use client'
 
-import { Suspense, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { Suspense, useEffect, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { useAuth } from '@/components/auth-provider'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -18,8 +19,18 @@ function LoginForm() {
   const [isLoading, setIsLoading] = useState(false)
   const [socialLoading, setSocialLoading] = useState<string | null>(null)
   const searchParams = useSearchParams()
+  const router = useRouter()
+  const { user, isLoading: authLoading } = useAuth()
   const redirectTo = searchParams.get('redirectTo') || '/dashboard'
   const urlError = searchParams.get('error')
+
+  // If the user is already authenticated (e.g. session restored client-side
+  // after OAuth), navigate to the dashboard without waiting for a refresh.
+  useEffect(() => {
+    if (!authLoading && user) {
+      router.replace(redirectTo)
+    }
+  }, [authLoading, user, redirectTo, router])
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()

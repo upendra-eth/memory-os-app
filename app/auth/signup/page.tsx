@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,12 +12,23 @@ import { Separator } from '@/components/ui/separator'
 import { Brain, Mail, Lock, User, Github, Loader2, AlertCircle, Sparkles, Shield, Zap, BarChart3, MailCheck } from 'lucide-react'
 import { signUpWithPassword } from '@/app/auth/auth-actions'
 import { createClient } from '@/lib/supabase/client'
+import { useAuth } from '@/components/auth-provider'
 
 export default function SignUpPage() {
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [socialLoading, setSocialLoading] = useState<string | null>(null)
   const [pendingEmail, setPendingEmail] = useState<string | null>(null)
+  const router = useRouter()
+  const { user, isLoading: authLoading } = useAuth()
+
+  // If the user is already authenticated (e.g. session restored client-side
+  // after OAuth), navigate to the dashboard without waiting for a refresh.
+  useEffect(() => {
+    if (!authLoading && user) {
+      router.replace('/dashboard')
+    }
+  }, [authLoading, user, router])
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
