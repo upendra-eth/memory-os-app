@@ -10,7 +10,7 @@ async function embedQuestion(question: string): Promise<number[] | null> {
   if (!GEMINI_API_KEY) return null
   try {
     const genAI = new GoogleGenerativeAI(GEMINI_API_KEY)
-    const model = genAI.getGenerativeModel({ model: 'embedding-001' })
+    const model = genAI.getGenerativeModel({ model: 'text-embedding-004' })
     const result = await model.embedContent(question)
     return result.embedding.values || null
   } catch (error) {

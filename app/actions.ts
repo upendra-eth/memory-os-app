@@ -71,7 +71,7 @@ export async function getAllLogs(page: number = 1, limit: number = 20) {
   const to = from + limit - 1
 
   const { data, error, count } = await auth.supabase
-    .from('life_logs')
+    .from('entries')
     .select('*', { count: 'exact' })
     .eq('user_id', auth.userId)
     .order('created_at', { ascending: false })
@@ -89,7 +89,7 @@ export async function deleteLog(id: string) {
   if (!auth) return { success: false, error: 'Not authenticated' }
 
   const { error } = await auth.supabase
-    .from('life_logs')
+    .from('entries')
     .delete()
     .eq('id', id)
     .eq('user_id', auth.userId)

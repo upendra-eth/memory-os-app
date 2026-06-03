@@ -10,15 +10,50 @@ async function getAuthProfileId() {
   const supabase = await createClient()
   const { data: { user }, error: authError } = await supabase.auth.getUser()
 
-  if (authError || !user) return null
+  if (authError || !user) {
+    console.error('[day-actions] Auth failed:', authError?.message || 'No user in session')
+    return null
+  }
 
-  const { data: profile } = await supabase
+  const { data: profile, error: profileError } = await supabase
     .from('user_profile')
     .select('id')
     .eq('auth_user_id', user.id)
     .single()
 
-  if (!profile) return null
+  if (!profile) {
+    console.error('[day-actions] No profile found for auth_user_id:', user.id, 'Error:', profileError?.message)
+
+    // Auto-create a basic profile for authenticated users who skipped onboarding
+    const email = user.email || ''
+    const displayName = user.user_metadata?.full_name || user.user_metadata?.name || email.split('@')[0] || 'User'
+
+    const { data: newProfile, error: insertError } = await supabase
+      .from('user_profile')
+      .insert({
+        auth_user_id: user.id,
+        email,
+        display_name: displayName,
+        age: 0,
+        gender: 'other',
+        height_cm: 0,
+        current_weight_kg: 0,
+        target_weight_kg: 0,
+        activity_level: 'moderate',
+        nutrition_goal: 'maintain',
+        onboarding_completed: false,
+      })
+      .select('id')
+      .single()
+
+    if (insertError || !newProfile) {
+      console.error('[day-actions] Failed to auto-create profile:', insertError?.message)
+      return null
+    }
+
+    console.log('[day-actions] Auto-created profile for user:', user.id, '→', newProfile.id)
+    return { userId: newProfile.id, supabase }
+  }
 
   return { userId: profile.id, supabase }
 }

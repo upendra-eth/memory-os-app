@@ -1,156 +1,408 @@
 'use client'
 
+import { useState, useEffect } from 'react'
+import { Navigation } from '@/components/navigation'
 import { Card } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Heart, TrendingUp, MessageSquare, FileText } from 'lucide-react'
-import Link from 'next/link'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Spinner } from '@/components/ui/spinner'
+import { ProfilePromptCard } from '@/components/profile-prompt-card'
+import { createClient } from '@/lib/supabase/client'
+import { useAuth } from '@/components/auth-provider'
+import { calculateBMR, calculateTDEE } from '@/lib/health-metrics'
+import type { ExtractedJSON } from '@/lib/extraction-schema'
+import {
+  Flame,
+  Beef,
+  Moon,
+  Smile,
+  Dumbbell,
+  Scale,
+  TrendingDown,
+  TrendingUp,
+  Minus,
+} from 'lucide-react'
+import {
+  ResponsiveContainer,
+  ComposedChart,
+  BarChart,
+  Bar,
+  AreaChart,
+  Area,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ReferenceLine,
+} from 'recharts'
+
+type Range = '7d' | '30d' | '90d'
+
+interface DayRow {
+  date: string
+  calories?: number
+  protein?: number
+  carbs?: number
+  fat?: number
+  sleep_hours?: number
+  sleep_quality?: number
+  mood_score?: number
+  stress_level?: number
+  workouts?: number
+  workout_min?: number
+}
+
+const RANGE_DAYS: Record<Range, number> = { '7d': 7, '30d': 30, '90d': 90 }
 
 export default function DashboardPage() {
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-primary/5 to-background">
-      <div className="container mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold mb-2">Welcome to Memory OS</h1>
-          <p className="text-muted-foreground text-lg">
-            Your personal health and life logging companion
-          </p>
-        </div>
+  const { profileId, user, isLoading: authLoading } = useAuth()
+  const [range, setRange] = useState<Range>('7d')
+  const [rows, setRows] = useState<DayRow[]>([])
+  const [tdee, setTdee] = useState<number | null>(null)
+  const [latest, setLatest] = useState<ExtractedJSON | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
 
-        {/* Quick Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-          <Card className="p-6 bg-gradient-to-br from-emerald-500/10 to-emerald-600/5 border-emerald-200/30">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground mb-1">BMI</p>
-                <p className="text-3xl font-bold">24.2</p>
-              </div>
-              <Heart className="w-8 h-8 text-emerald-600" />
-            </div>
-          </Card>
+  useEffect(() => {
+    if (authLoading) return
+    const load = async () => {
+      setIsLoading(true)
+      try {
+        if (!profileId) return
+        const supabase = createClient()
 
-          <Card className="p-6 bg-gradient-to-br from-cyan-500/10 to-cyan-600/5 border-cyan-200/30">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground mb-1">TDEE</p>
-                <p className="text-3xl font-bold">2,450</p>
-                <p className="text-xs text-muted-foreground">kcal/day</p>
-              </div>
-              <TrendingUp className="w-8 h-8 text-cyan-600" />
-            </div>
-          </Card>
+        // Profile → TDEE target
+        const { data: profile } = await supabase
+          .from('user_profile')
+          .select('*')
+          .eq('id', profileId)
+          .single()
 
-          <Card className="p-6 bg-gradient-to-br from-violet-500/10 to-violet-600/5 border-violet-200/30">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground mb-1">Entries</p>
-                <p className="text-3xl font-bold">0</p>
-                <p className="text-xs text-muted-foreground">this week</p>
-              </div>
-              <FileText className="w-8 h-8 text-violet-600" />
-            </div>
-          </Card>
+        if (profile?.current_weight_kg && profile?.height_cm && profile?.gender) {
+          const age =
+            profile.dob && typeof profile.dob === 'string'
+              ? new Date().getFullYear() - parseInt(profile.dob.split('-')[0])
+              : profile.age || 30
+          if (age > 0) {
+            const bmr = calculateBMR(profile.current_weight_kg, profile.height_cm, age, profile.gender)
+            setTdee(calculateTDEE(bmr, profile.activity_level || 'moderate'))
+          }
+        }
 
-          <Card className="p-6 bg-gradient-to-br from-orange-500/10 to-orange-600/5 border-orange-200/30">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground mb-1">Insights</p>
-                <p className="text-3xl font-bold">0</p>
-                <p className="text-xs text-muted-foreground">pending</p>
-              </div>
-              <MessageSquare className="w-8 h-8 text-orange-600" />
-            </div>
-          </Card>
-        </div>
+        // Trend rows from daily_aggregates
+        const start = new Date()
+        start.setDate(start.getDate() - RANGE_DAYS[range])
+        const { data: aggs } = await supabase
+          .from('daily_aggregates')
+          .select('*')
+          .eq('user_id', profileId)
+          .gte('log_date', start.toISOString().split('T')[0])
+          .order('log_date', { ascending: true })
 
-        {/* Main Features */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-          {/* Add Entry - Primary CTA */}
-          <Card className="p-6 hover:shadow-lg transition-shadow lg:col-span-1 bg-gradient-to-br from-primary/10 to-primary/5 border-primary/20">
-            <div className="mb-4">
-              <div className="w-12 h-12 bg-primary rounded-lg flex items-center justify-center mb-3">
-                <FileText className="w-6 h-6 text-primary-foreground" />
-              </div>
-              <h3 className="text-xl font-semibold">Add Entry</h3>
-              <p className="text-sm text-muted-foreground mt-1">
-                Paste your ChatGPT output with AI-powered normalization
-              </p>
-            </div>
-            <Link href="/add">
-              <Button className="w-full">Add Entry Now</Button>
-            </Link>
-          </Card>
+        setRows(
+          (aggs || []).map((a: any) => ({
+            date: new Date(a.log_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+            calories: a.calories ?? undefined,
+            protein: a.protein_g ?? undefined,
+            carbs: a.carbs_g ?? undefined,
+            fat: a.fat_g ?? undefined,
+            sleep_hours: a.sleep_hours ?? undefined,
+            sleep_quality: a.sleep_quality ?? undefined,
+            mood_score: a.mood_score ?? undefined,
+            stress_level: a.stress_level ?? undefined,
+            workouts: a.workouts_count ?? undefined,
+            workout_min: a.workout_duration_min ?? undefined,
+          }))
+        )
 
-          {/* Chat Interface */}
-          <Card className="p-6 hover:shadow-lg transition-shadow">
-            <div className="mb-4">
-              <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-3">
-                <MessageSquare className="w-6 h-6 text-primary" />
-              </div>
-              <h3 className="text-xl font-semibold">Ask AI</h3>
-              <p className="text-sm text-muted-foreground mt-1">
-                Ask questions about your health data with AI insights
-              </p>
-            </div>
-            <Link href="/chat">
-              <Button className="w-full">Ask Questions</Button>
-            </Link>
-          </Card>
+        // Latest entry → today snapshot (energy balance, etc.)
+        const { data: latestEntry } = await supabase
+          .from('entries')
+          .select('extracted_json')
+          .eq('user_id', profileId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single()
+        setLatest((latestEntry?.extracted_json as ExtractedJSON) ?? null)
+      } catch (e) {
+        console.error('[v0] dashboard load error:', e)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    load()
+  }, [range, profileId, authLoading])
 
-          {/* Data Explorer */}
-          <Card className="p-6 hover:shadow-lg transition-shadow">
-            <div className="mb-4">
-              <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-3">
-                <TrendingUp className="w-6 h-6 text-primary" />
-              </div>
-              <h3 className="text-xl font-semibold">Raw Explorer</h3>
-              <p className="text-sm text-muted-foreground mt-1">
-                View and explore all your logged data
-              </p>
-            </div>
-            <Link href="/explorer">
-              <Button className="w-full">Explore Data</Button>
-            </Link>
-          </Card>
-        </div>
+  const today = rows[rows.length - 1]
+  const eb = latest?.energy_balance
+  const totals = latest?.daily_totals
 
-        {/* Feature Tabs (Placeholder for Phase 3+) */}
-        <Card className="p-6">
-          <Tabs defaultValue="timeline" className="w-full">
-            <TabsList className="grid w-full grid-cols-4">
-              <TabsTrigger value="timeline">Timeline</TabsTrigger>
-              <TabsTrigger value="body">Body</TabsTrigger>
-              <TabsTrigger value="nutrition">Nutrition</TabsTrigger>
-              <TabsTrigger value="profile">Profile</TabsTrigger>
-            </TabsList>
-            <TabsContent value="timeline" className="mt-4">
-              <div className="text-center py-8">
-                <p className="text-muted-foreground">Timeline view coming in Phase 3</p>
-              </div>
-            </TabsContent>
-            <TabsContent value="body" className="mt-4">
-              <div className="text-center py-4">
-                <Link href="/dashboard/body-mood">
-                  <Button>View Body & Mood Dashboard</Button>
-                </Link>
-              </div>
-            </TabsContent>
-            <TabsContent value="nutrition" className="mt-4">
-              <div className="text-center py-4">
-                <Link href="/dashboard/nutrition-fitness">
-                  <Button>View Nutrition & Fitness Dashboard</Button>
-                </Link>
-              </div>
-            </TabsContent>
-            <TabsContent value="profile" className="mt-4">
-              <div className="text-center py-8">
-                <p className="text-muted-foreground">Profile dashboard coming in Phase 4</p>
-              </div>
-            </TabsContent>
-          </Tabs>
-        </Card>
+  const avg = (key: keyof DayRow) => {
+    const vals = rows.map((r) => r[key] as number | undefined).filter((v): v is number => typeof v === 'number')
+    if (vals.length === 0) return null
+    return vals.reduce((s, v) => s + v, 0) / vals.length
+  }
+  const totalWorkouts = rows.reduce((s, r) => s + (r.workouts || 0), 0)
+  const daysLogged = rows.length
+
+  if (authLoading || isLoading) {
+    return (
+      <div className="flex flex-col md:flex-row min-h-screen">
+        <Navigation />
+        <main className="flex-1 flex items-center justify-center">
+          <Spinner />
+        </main>
       </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col md:flex-row min-h-screen">
+      <Navigation />
+      <main className="flex-1 p-4 md:p-8 pb-24 md:pb-8">
+        <div className="max-w-5xl mx-auto space-y-6">
+          <header>
+            <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+            <p className="text-muted-foreground mt-1">
+              {today ? "Today's snapshot and your trends" : 'Log an entry to see your insights'}
+            </p>
+          </header>
+
+          {/* Daily profile prompt notification */}
+          <ProfilePromptCard />
+
+          {/* ---- TODAY SNAPSHOT ---- */}
+          <section>
+            <h2 className="text-sm font-medium text-muted-foreground mb-3 uppercase tracking-wide">Today</h2>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+              <SnapshotCard
+                icon={<Flame className="h-4 w-4" />}
+                label="Calories"
+                value={totals?.kcal ?? today?.calories}
+                suffix={tdee ? ` / ${tdee}` : ''}
+                tint="orange"
+              />
+              <SnapshotCard
+                icon={<Beef className="h-4 w-4" />}
+                label="Protein"
+                value={totals?.protein_g ?? today?.protein}
+                suffix="g"
+                tint="blue"
+              />
+              <SnapshotCard
+                icon={<Moon className="h-4 w-4" />}
+                label="Sleep"
+                value={today?.sleep_hours}
+                suffix="h"
+                tint="violet"
+              />
+              <SnapshotCard
+                icon={<Smile className="h-4 w-4" />}
+                label="Mood"
+                value={today?.mood_score}
+                suffix="/10"
+                tint="emerald"
+              />
+              <SnapshotCard
+                icon={<Dumbbell className="h-4 w-4" />}
+                label="Training"
+                value={today?.workout_min}
+                suffix="m"
+                tint="cyan"
+              />
+              <EnergyBalanceCard eb={eb} />
+            </div>
+          </section>
+
+          {/* ---- RANGE SELECTOR ---- */}
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Trends</h2>
+            <Tabs value={range} onValueChange={(v) => setRange(v as Range)}>
+              <TabsList>
+                <TabsTrigger value="7d">Week</TabsTrigger>
+                <TabsTrigger value="30d">Month</TabsTrigger>
+                <TabsTrigger value="90d">Quarter</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
+
+          {rows.length === 0 ? (
+            <Card className="p-10 text-center text-muted-foreground">
+              No data in this range yet. Add an entry to start building your trends.
+            </Card>
+          ) : (
+            <>
+              {/* Period summary strip */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <StatPill label="Days logged" value={`${daysLogged}`} />
+                <StatPill label="Avg calories" value={fmt(avg('calories'), ' kcal')} />
+                <StatPill label="Avg protein" value={fmt(avg('protein'), 'g')} />
+                <StatPill label="Workouts" value={`${totalWorkouts}`} />
+              </div>
+
+              {/* Charts */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <ChartCard title={`Calories vs TDEE${tdee ? ` (${tdee})` : ''}`}>
+                  <ComposedChart data={rows}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                    <XAxis dataKey="date" fontSize={12} />
+                    <YAxis fontSize={12} />
+                    <Tooltip />
+                    <Bar dataKey="calories" fill="#f59e0b" name="Calories" radius={[4, 4, 0, 0]} />
+                    {tdee && <ReferenceLine y={tdee} stroke="#06b6d4" strokeDasharray="4 4" label="TDEE" />}
+                  </ComposedChart>
+                </ChartCard>
+
+                <ChartCard title="Macros (g)">
+                  <AreaChart data={rows}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                    <XAxis dataKey="date" fontSize={12} />
+                    <YAxis fontSize={12} />
+                    <Tooltip />
+                    <Legend />
+                    <Area type="monotone" dataKey="protein" stackId="1" stroke="#3b82f6" fill="#3b82f6" name="Protein" />
+                    <Area type="monotone" dataKey="carbs" stackId="1" stroke="#f59e0b" fill="#f59e0b" name="Carbs" />
+                    <Area type="monotone" dataKey="fat" stackId="1" stroke="#ef4444" fill="#ef4444" name="Fat" />
+                  </AreaChart>
+                </ChartCard>
+
+                <ChartCard title="Sleep">
+                  <LineChart data={rows}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                    <XAxis dataKey="date" fontSize={12} />
+                    <YAxis fontSize={12} />
+                    <Tooltip />
+                    <Legend />
+                    <Line type="monotone" dataKey="sleep_hours" stroke="#8b5cf6" name="Hours" dot={false} />
+                    <Line type="monotone" dataKey="sleep_quality" stroke="#a78bfa" name="Quality" dot={false} />
+                  </LineChart>
+                </ChartCard>
+
+                <ChartCard title="Mood & Stress">
+                  <LineChart data={rows}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                    <XAxis dataKey="date" fontSize={12} />
+                    <YAxis domain={[0, 10]} fontSize={12} />
+                    <Tooltip />
+                    <Legend />
+                    <Line type="monotone" dataKey="mood_score" stroke="#10b981" name="Mood" dot={false} />
+                    <Line type="monotone" dataKey="stress_level" stroke="#ef4444" name="Stress" dot={false} />
+                  </LineChart>
+                </ChartCard>
+
+                <ChartCard title="Training volume" className="lg:col-span-2">
+                  <BarChart data={rows}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                    <XAxis dataKey="date" fontSize={12} />
+                    <YAxis fontSize={12} />
+                    <Tooltip />
+                    <Legend />
+                    <Bar dataKey="workout_min" fill="#14b8a6" name="Minutes" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ChartCard>
+              </div>
+            </>
+          )}
+        </div>
+      </main>
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+
+function fmt(v: number | null, suffix = ''): string {
+  if (v === null) return '—'
+  return `${Math.round(v)}${suffix}`
+}
+
+const TINTS: Record<string, string> = {
+  orange: 'text-orange-600 bg-orange-500/10',
+  blue: 'text-blue-600 bg-blue-500/10',
+  violet: 'text-violet-600 bg-violet-500/10',
+  emerald: 'text-emerald-600 bg-emerald-500/10',
+  cyan: 'text-cyan-600 bg-cyan-500/10',
+}
+
+function SnapshotCard({
+  icon,
+  label,
+  value,
+  suffix = '',
+  tint,
+}: {
+  icon: React.ReactNode
+  label: string
+  value?: number | null
+  suffix?: string
+  tint: string
+}) {
+  const has = typeof value === 'number'
+  return (
+    <Card className="p-3">
+      <div className={`inline-flex h-7 w-7 items-center justify-center rounded-lg mb-2 ${TINTS[tint]}`}>{icon}</div>
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="text-lg font-bold tabular-nums">
+        {has ? Math.round(value as number) : '—'}
+        {has && <span className="text-xs font-normal text-muted-foreground">{suffix}</span>}
+      </p>
+    </Card>
+  )
+}
+
+function EnergyBalanceCard({ eb }: { eb?: ExtractedJSON['energy_balance'] }) {
+  const status = eb?.status
+  const balance = eb?.balance_kcal
+  const Icon = status === 'deficit' ? TrendingDown : status === 'surplus' ? TrendingUp : Minus
+  const tint =
+    status === 'deficit'
+      ? 'text-emerald-600 bg-emerald-500/10'
+      : status === 'surplus'
+        ? 'text-orange-600 bg-orange-500/10'
+        : 'text-muted-foreground bg-muted'
+  return (
+    <Card className="p-3">
+      <div className={`inline-flex h-7 w-7 items-center justify-center rounded-lg mb-2 ${tint}`}>
+        <Icon className="h-4 w-4" />
+      </div>
+      <p className="text-xs text-muted-foreground flex items-center gap-1">
+        <Scale className="h-3 w-3" /> Balance
+      </p>
+      <p className="text-lg font-bold tabular-nums capitalize">
+        {status ?? '—'}
+        {typeof balance === 'number' && (
+          <span className="text-xs font-normal text-muted-foreground"> {balance > 0 ? '+' : ''}{balance}</span>
+        )}
+      </p>
+    </Card>
+  )
+}
+
+function StatPill({ label, value }: { label: string; value: string }) {
+  return (
+    <Card className="p-3">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="text-xl font-bold tabular-nums">{value}</p>
+    </Card>
+  )
+}
+
+function ChartCard({
+  title,
+  children,
+  className = '',
+}: {
+  title: string
+  children: React.ReactElement
+  className?: string
+}) {
+  return (
+    <Card className={`p-5 ${className}`}>
+      <h3 className="text-sm font-semibold mb-4">{title}</h3>
+      <ResponsiveContainer width="100%" height={260}>
+        {children}
+      </ResponsiveContainer>
+    </Card>
   )
 }

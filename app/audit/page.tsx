@@ -132,8 +132,31 @@ export default function AuditPage() {
                       {item.audit_type.replace(/_/g, ' ')}
                     </span>
                   </div>
-                  <p className="text-sm text-muted-foreground mb-3">
-                    {JSON.stringify(item.suggested_value)}
+                  <p className="text-sm text-foreground mb-3 font-medium">
+                    {(() => {
+                      const val = item.suggested_value
+                      if (!val) return 'Review needed'
+                      
+                      // If it's a simple string
+                      if (typeof val === 'string') return val
+                      
+                      // If it's an object with field/reason (common from LLM)
+                      if (typeof val === 'object' && val !== null) {
+                        const obj = val as Record<string, any>
+                        if (obj.field && obj.reason) {
+                          const fieldStr = String(obj.field).replace(/\[\d+\]/g, '').replace(/_/g, ' ')
+                          const reasonStr = String(obj.reason).replace(/_/g, ' ')
+                          return `Clarification needed for ${fieldStr}: ${reasonStr}`
+                        }
+                        
+                        // Fallback for other objects
+                        return Object.entries(obj)
+                          .map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`)
+                          .join(' | ')
+                      }
+                      
+                      return JSON.stringify(val)
+                    })()}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {new Date(item.created_at).toLocaleString('en-IN')}

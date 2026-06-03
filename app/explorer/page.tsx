@@ -2,24 +2,10 @@ import { Navigation } from '@/components/navigation'
 import { LogExplorer } from '@/components/log-explorer'
 import { createClient } from '@/lib/supabase/server'
 
-async function getLogs() {
-  const supabase = await createClient()
-  
-  const { data, error, count } = await supabase
-    .from('life_logs')
-    .select('*', { count: 'exact' })
-    .order('created_at', { ascending: false })
-    .limit(50)
-  
-  if (error) {
-    return { logs: [], total: 0, error: error.message }
-  }
-  
-  return { logs: data, total: count ?? 0 }
-}
+import { getAllLogs } from '@/app/actions'
 
 export default async function ExplorerPage() {
-  const { logs, total } = await getLogs()
+  const { logs, total } = await getAllLogs()
 
   return (
     <div className="flex flex-col md:flex-row min-h-screen">

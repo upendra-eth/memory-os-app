@@ -15,13 +15,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import type { LifeLog } from '@/lib/types'
+import type { Entry } from '@/lib/types'
 import { deleteLog } from '@/app/actions'
 import { Trash2, ChevronDown, ChevronUp, Clock, Database } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 
 interface LogExplorerProps {
-  initialLogs: LifeLog[]
+  initialLogs: Entry[]
   total: number
 }
 
@@ -65,7 +65,8 @@ export function LogExplorer({ initialLogs, total }: LogExplorerProps) {
     }
   }
 
-  const getLogPreview = (content: Record<string, unknown>): string => {
+  const getLogPreview = (content: any): string => {
+    if (!content) return 'Empty Entry'
     const type = content.type as string | undefined
     const date = content.date as string | undefined
     const name = content.name as string | undefined
@@ -118,7 +119,7 @@ export function LogExplorer({ initialLogs, total }: LogExplorerProps) {
                     </div>
                     <div className="min-w-0 flex-1">
                       <CardTitle className="text-sm font-medium truncate">
-                        {getLogPreview(log.content)}
+                        {log.narrative_text || log.raw_text?.substring(0, 100) || getLogPreview(log.extracted_json || {})}
                       </CardTitle>
                       <CardDescription className="flex items-center gap-1 text-xs">
                         <Clock className="h-3 w-3" />
@@ -152,7 +153,7 @@ export function LogExplorer({ initialLogs, total }: LogExplorerProps) {
                 <CardContent className="pt-0 pb-4">
                   <ScrollArea className="max-h-[400px]">
                     <pre className="text-xs font-mono bg-secondary/50 rounded-lg p-4 overflow-auto text-foreground">
-                      {JSON.stringify(log.content, null, 2)}
+                      {JSON.stringify(log.extracted_json || {}, null, 2)}
                     </pre>
                   </ScrollArea>
                   <div className="mt-3 pt-3 border-t border-border flex items-center justify-between text-xs text-muted-foreground">

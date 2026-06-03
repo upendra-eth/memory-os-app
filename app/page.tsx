@@ -17,16 +17,16 @@ async function getStats() {
   
   // RLS will automatically scope these queries to the authenticated user
   const { count: totalLogs } = await supabase
-    .from('life_logs')
+    .from('entries')
     .select('*', { count: 'exact', head: true })
   
   const { count: recentLogs } = await supabase
-    .from('life_logs')
+    .from('entries')
     .select('*', { count: 'exact', head: true })
     .gte('created_at', sevenDaysAgo.toISOString())
   
   const { data: latestLog } = await supabase
-    .from('life_logs')
+    .from('entries')
     .select('created_at')
     .order('created_at', { ascending: false })
     .limit(1)
@@ -109,43 +109,43 @@ export default async function DashboardPage() {
           </div>
 
           <div className="grid md:grid-cols-3 gap-4">
-            <Link href="/ingestor" className="group">
+            <Link href="/add" className="group">
               <Card className="h-full transition-all hover:shadow-lg hover:border-primary/50 hover:-translate-y-1">
                 <CardHeader>
                   <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary mb-2 group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
                     <Activity className="h-6 w-6" />
                   </div>
-                  <CardTitle>Paste Ingestor</CardTitle>
+                  <CardTitle>Add Entry</CardTitle>
                   <CardDescription>
-                    Paste JSON data from ChatGPT and store it in your personal database
+                    Paste your ChatGPT output — Gemini normalizes it into your timeline
                   </CardDescription>
                 </CardHeader>
               </Card>
             </Link>
 
-            <Link href="/chat" className="group">
+            <Link href="/ask" className="group">
               <Card className="h-full transition-all hover:shadow-lg hover:border-primary/50 hover:-translate-y-1">
                 <CardHeader>
                   <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary mb-2 group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
                     <MessageSquare className="h-6 w-6" />
                   </div>
-                  <CardTitle>Intelligence Chat</CardTitle>
+                  <CardTitle>Ask Your Data</CardTitle>
                   <CardDescription>
-                    Ask questions about your data and get AI-powered insights with visualizations
+                    Ask questions about your logs and get AI-powered insights
                   </CardDescription>
                 </CardHeader>
               </Card>
             </Link>
 
-            <Link href="/explorer" className="group">
+            <Link href="/timeline" className="group">
               <Card className="h-full transition-all hover:shadow-lg hover:border-primary/50 hover:-translate-y-1">
                 <CardHeader>
                   <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary mb-2 group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
                     <Database className="h-6 w-6" />
                   </div>
-                  <CardTitle>Raw Explorer</CardTitle>
+                  <CardTitle>Timeline</CardTitle>
                   <CardDescription>
-                    Browse and inspect your raw JSON logs to verify saved data
+                    Browse your days and drill into any entry you've logged
                   </CardDescription>
                 </CardHeader>
               </Card>
