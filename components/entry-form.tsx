@@ -5,9 +5,10 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Loader2, CheckCircle2, AlertCircle, CalendarDays, Layers, RotateCw, Trash2, CloudOff } from 'lucide-react'
+import { Loader2, CheckCircle2, AlertCircle, CalendarDays, Layers, RotateCw, Trash2, CloudOff, Copy, Check, Sparkles, FlaskConical } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { processAndSaveEntry, getDayLogStatus } from '@/app/entry-actions'
+import { SETUP_PROMPT, EXAMPLE_PASTE } from '@/lib/chatgpt-setup'
 import {
   addPendingEntry,
   getPendingEntries,
@@ -46,7 +47,25 @@ export function EntryForm() {
   const [processingStep, setProcessingStep] = useState<string>('')
   const [pending, setPending] = useState<PendingEntry[]>([])
   const [retryingId, setRetryingId] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
   const { toast } = useToast()
+
+  const handleCopyPrompt = async () => {
+    try {
+      await navigator.clipboard.writeText(SETUP_PROMPT)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+      toast({ title: 'Copied', description: 'Paste it into ChatGPT or Google AI Studio, then log with "log: …"' })
+    } catch {
+      toast({ title: 'Copy failed', description: 'Select the text manually instead.', variant: 'destructive' })
+    }
+  }
+
+  const handleLoadExample = () => {
+    setParseError(null)
+    setSavedEntry(null)
+    setPaste(EXAMPLE_PASTE)
+  }
 
   // Load any pastes that failed to save previously (survives reloads).
   useEffect(() => {
@@ -167,14 +186,42 @@ export function EntryForm() {
   return (
     <div className="w-full max-w-2xl mx-auto space-y-4">
       {/* Instruction Card */}
-      <Card className="p-4 bg-blue-50 border-blue-200">
-        <h3 className="font-semibold text-blue-900 mb-2">How to use:</h3>
-        <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
-          <li>Paste output from ChatGPT with === RAW ===, === NARRATIVE ===, === EXTRACTED === sections</li>
-          <li>Click Save to parse and normalize the data</li>
-          <li>Gemini will intelligently extract structured data from the EXTRACTED section</li>
-          <li>Your entry is added to your timeline and dashboards automatically</li>
-        </ol>
+      <Card className="p-4 bg-blue-50 border-blue-200 space-y-3">
+        <div>
+          <h3 className="font-semibold text-blue-900 mb-2">How it works</h3>
+          <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
+            <li>One-time: paste the setup prompt into ChatGPT (or Google AI Studio).</li>
+            <li>Each day, send <span className="font-mono">log: …</span> and copy the assistant&apos;s full reply.</li>
+            <li>Paste it below and Save — it&apos;s structured into your timeline and dashboards automatically.</li>
+          </ol>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={handleCopyPrompt}
+            className="bg-white"
+          >
+            {copied ? <Check className="h-4 w-4 mr-1.5 text-emerald-600" /> : <Copy className="h-4 w-4 mr-1.5" />}
+            {copied ? 'Copied!' : 'Copy AI setup prompt'}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={handleLoadExample}
+            disabled={isPending}
+            className="bg-white"
+          >
+            <FlaskConical className="h-4 w-4 mr-1.5" />
+            Load example
+          </Button>
+        </div>
+        <p className="text-xs text-blue-700/80 flex items-start gap-1.5">
+          <Sparkles className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+          New here? Hit <span className="font-medium">Load example</span> then <span className="font-medium">Save</span> to see the whole flow with sample data.
+        </p>
       </Card>
 
       {/* Entry date — quick picks + calendar; change it to back-fill a past day */}

@@ -1,7 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Link from 'next/link'
 import { Navigation } from '@/components/navigation'
+import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Spinner } from '@/components/ui/spinner'
@@ -20,6 +22,10 @@ import {
   TrendingDown,
   TrendingUp,
   Minus,
+  Plus,
+  UserCircle,
+  ArrowRight,
+  Sparkles,
 } from 'lucide-react'
 import {
   ResponsiveContainer,
@@ -42,6 +48,7 @@ type Range = '7d' | '30d' | '90d'
 
 interface DayRow {
   date: string
+  iso?: string
   calories?: number
   protein?: number
   carbs?: number
@@ -62,6 +69,7 @@ export default function DashboardPage() {
   const [rows, setRows] = useState<DayRow[]>([])
   const [tdee, setTdee] = useState<number | null>(null)
   const [latest, setLatest] = useState<ExtractedJSON | null>(null)
+  const [needsProfile, setNeedsProfile] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
@@ -79,7 +87,10 @@ export default function DashboardPage() {
           .eq('id', profileId)
           .single()
 
-        if (profile?.current_weight_kg && profile?.height_cm && profile?.gender) {
+        const profileReady = !!(profile?.current_weight_kg && profile?.height_cm && profile?.gender)
+        setNeedsProfile(!profileReady)
+
+        if (profileReady) {
           const age =
             profile.dob && typeof profile.dob === 'string'
               ? new Date().getFullYear() - parseInt(profile.dob.split('-')[0])
@@ -103,6 +114,7 @@ export default function DashboardPage() {
         setRows(
           (aggs || []).map((a: any) => ({
             date: new Date(a.log_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+            iso: a.log_date as string,
             calories: a.calories ?? undefined,
             protein: a.protein_g ?? undefined,
             carbs: a.carbs_g ?? undefined,
@@ -137,6 +149,10 @@ export default function DashboardPage() {
   const today = rows[rows.length - 1]
   const eb = latest?.energy_balance
   const totals = latest?.daily_totals
+  const hasData = rows.length > 0 || latest != null
+  const todayIso = new Date().toISOString().split('T')[0]
+  const isToday = today?.iso === todayIso
+  const snapshotLabel = !today ? 'Today' : isToday ? 'Today' : `Latest · ${today.date}`
 
   const avg = (key: keyof DayRow) => {
     const vals = rows.map((r) => r[key] as number | undefined).filter((v): v is number => typeof v === 'number')
@@ -165,16 +181,34 @@ export default function DashboardPage() {
           <header>
             <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
             <p className="text-muted-foreground mt-1">
-              {today ? "Today's snapshot and your trends" : 'Log an entry to see your insights'}
+              {hasData ? 'Your snapshot and trends' : 'Log an entry to see your insights'}
             </p>
           </header>
 
           {/* Daily profile prompt notification */}
           <ProfilePromptCard />
 
-          {/* ---- TODAY SNAPSHOT ---- */}
+          {!hasData ? (
+            <FirstRunEmptyState needsProfile={needsProfile} />
+          ) : (
+          <>
+          {/* Finish-profile nudge: targets/TDEE need these fields */}
+          {needsProfile && (
+            <Link href="/profile">
+              <Card className="p-4 flex items-center gap-3 border-primary/30 bg-primary/5 hover:bg-primary/10 transition-colors">
+                <UserCircle className="h-5 w-5 text-primary flex-shrink-0" />
+                <div className="flex-1 text-sm">
+                  <span className="font-medium">Finish your profile</span>
+                  <span className="text-muted-foreground"> — add weight, height & sex to unlock calorie targets (TDEE) and energy balance.</span>
+                </div>
+                <ArrowRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+              </Card>
+            </Link>
+          )}
+
+          {/* ---- TODAY / LATEST SNAPSHOT ---- */}
           <section>
-            <h2 className="text-sm font-medium text-muted-foreground mb-3 uppercase tracking-wide">Today</h2>
+            <h2 className="text-sm font-medium text-muted-foreground mb-3 uppercase tracking-wide">{snapshotLabel}</h2>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
               <SnapshotCard
                 icon={<Flame className="h-4 w-4" />}
@@ -304,6 +338,8 @@ export default function DashboardPage() {
               </div>
             </>
           )}
+          </>
+          )}
         </div>
       </main>
     </div>
@@ -315,6 +351,40 @@ export default function DashboardPage() {
 function fmt(v: number | null, suffix = ''): string {
   if (v === null) return '—'
   return `${Math.round(v)}${suffix}`
+}
+
+function FirstRunEmptyState({ needsProfile }: { needsProfile: boolean }) {
+  return (
+    <Card className="p-8 md:p-12 text-center space-y-6">
+      <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary mx-auto">
+        <Sparkles className="h-7 w-7" />
+      </div>
+      <div className="space-y-1.5 max-w-md mx-auto">
+        <h2 className="text-xl font-semibold">Welcome to Memory OS</h2>
+        <p className="text-sm text-muted-foreground">
+          Log your day once and your snapshot, trends, training and insights fill in automatically.
+          {needsProfile && ' Add a few profile details so calorie targets and energy balance work.'}
+        </p>
+      </div>
+      <div className="flex flex-col sm:flex-row gap-3 justify-center">
+        <Link href="/add">
+          <Button size="lg" className="w-full sm:w-auto">
+            <Plus className="h-4 w-4 mr-1.5" /> Add your first entry
+          </Button>
+        </Link>
+        {needsProfile && (
+          <Link href="/profile">
+            <Button size="lg" variant="outline" className="w-full sm:w-auto">
+              <UserCircle className="h-4 w-4 mr-1.5" /> Complete profile
+            </Button>
+          </Link>
+        )}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Not sure what to paste? Open <span className="font-medium">Add Entry</span> and hit “Load example”.
+      </p>
+    </Card>
+  )
 }
 
 const TINTS: Record<string, string> = {

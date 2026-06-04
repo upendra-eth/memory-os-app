@@ -1,8 +1,10 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { Navigation } from '@/components/navigation'
 import { Card } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Spinner } from '@/components/ui/spinner'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -77,8 +79,11 @@ export default function ExercisesPage() {
               <Spinner />
             </div>
           ) : catalog.length === 0 ? (
-            <Card className="p-10 text-center text-muted-foreground">
-              No workouts logged yet. Add an entry with a workout to start tracking.
+            <Card className="p-10 text-center space-y-4">
+              <p className="text-muted-foreground">
+                No workouts logged yet. Add an entry with a workout to start tracking progress per exercise.
+              </p>
+              <Link href="/add"><Button>Add an entry</Button></Link>
             </Card>
           ) : (
             <>

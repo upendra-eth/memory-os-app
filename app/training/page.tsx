@@ -1,8 +1,10 @@
 'use client'
 
 import { Fragment, useEffect, useState } from 'react'
+import Link from 'next/link'
 import { Navigation } from '@/components/navigation'
 import { Card } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Spinner } from '@/components/ui/spinner'
@@ -62,8 +64,14 @@ export default function TrainingPage() {
               <Spinner />
             </div>
           ) : days.length === 0 ? (
-            <Card className="p-10 text-center text-muted-foreground">
-              No entries in this range yet. Add one from <span className="font-medium">Add Entry</span>.
+            <Card className="p-10 text-center space-y-4">
+              <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary mx-auto">
+                <Dumbbell className="h-6 w-6" />
+              </div>
+              <p className="text-muted-foreground">
+                No workouts or meals logged in this range yet. Log a day that includes training to see it here.
+              </p>
+              <Link href="/add"><Button>Add an entry</Button></Link>
             </Card>
           ) : (
             days.map((day) => (

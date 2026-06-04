@@ -2,7 +2,7 @@
   "name": "Memory OS",
   "short_name": "MemoryOS",
   "description": "Personal data intelligence system with AI-powered insights",
-  "start_url": "/",
+  "start_url": "/dashboard",
   "display": "standalone",
   "background_color": "#f0fdfa",
   "theme_color": "#14b8a6",
@@ -25,19 +25,19 @@
   "screenshots": [],
   "shortcuts": [
     {
-      "name": "Ingest Data",
-      "url": "/ingestor",
-      "description": "Paste and save new data"
+      "name": "Add Entry",
+      "url": "/add",
+      "description": "Paste your daily log and save it"
     },
     {
-      "name": "Chat with AI",
-      "url": "/chat",
-      "description": "Ask questions about your data"
+      "name": "Ask Your Data",
+      "url": "/ask",
+      "description": "Chat with your logged memory"
     },
     {
-      "name": "View Logs",
-      "url": "/explorer",
-      "description": "Browse raw data logs"
+      "name": "Timeline",
+      "url": "/timeline",
+      "description": "Browse your logged days"
     }
   ]
 }
