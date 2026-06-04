@@ -29,6 +29,7 @@ import {
   HeartPulse,
   Stethoscope,
   Compass,
+  Target,
 } from 'lucide-react'
 import {
   ResponsiveContainer,
@@ -210,19 +211,33 @@ export default function DashboardPage() {
           {/* Daily profile prompt notification */}
           <ProfilePromptCard />
 
-          {/* Discover teaser */}
-          <Link href="/discover">
-            <Card className="p-4 flex items-center gap-3 bg-gradient-to-r from-primary/10 to-accent/10 border-primary/20 hover:from-primary/15 hover:to-accent/15 transition-colors">
-              <div className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-accent text-white flex-shrink-0">
-                <Compass className="h-4 w-4" />
-              </div>
-              <div className="flex-1 text-sm">
-                <p className="font-medium">Today&apos;s Discover brief</p>
-                <p className="text-xs text-muted-foreground">Growth, health & time tips + a food worth trying</p>
-              </div>
-              <ArrowRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-            </Card>
-          </Link>
+          {/* Plan + Discover teasers */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Link href="/plan">
+              <Card className="p-4 flex items-center gap-3 hover:bg-secondary/50 transition-colors h-full">
+                <div className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary flex-shrink-0">
+                  <Target className="h-4 w-4" />
+                </div>
+                <div className="flex-1 text-sm">
+                  <p className="font-medium">Plan & Track</p>
+                  <p className="text-xs text-muted-foreground">Goals → workout plan, habits & tasks</p>
+                </div>
+                <ArrowRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+              </Card>
+            </Link>
+            <Link href="/discover">
+              <Card className="p-4 flex items-center gap-3 bg-gradient-to-r from-primary/10 to-accent/10 border-primary/20 hover:from-primary/15 hover:to-accent/15 transition-colors h-full">
+                <div className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-accent text-white flex-shrink-0">
+                  <Compass className="h-4 w-4" />
+                </div>
+                <div className="flex-1 text-sm">
+                  <p className="font-medium">Today&apos;s Discover brief</p>
+                  <p className="text-xs text-muted-foreground">Growth, health & time tips + a food</p>
+                </div>
+                <ArrowRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+              </Card>
+            </Link>
+          </div>
 
           {/* Health hub summary — only shows once there's something to show */}
           {(latestReport || activeIssues > 0) && (

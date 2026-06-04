@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/components/auth-provider'
-import { Brain, Plus, MessageSquare, Clock, User, Stethoscope, LogOut, Dumbbell, TrendingUp, Sparkles, MoreHorizontal, HeartPulse, Compass } from 'lucide-react'
+import { Brain, Plus, MessageSquare, Clock, User, Stethoscope, LogOut, Dumbbell, TrendingUp, Sparkles, MoreHorizontal, HeartPulse, Compass, Target } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { LogoTile } from '@/components/logo'
 import {
@@ -20,6 +20,7 @@ import {
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: Brain },
   { href: '/add', label: 'Add Entry', icon: Plus },
+  { href: '/plan', label: 'Plan', icon: Target },
   { href: '/training', label: 'Training', icon: Dumbbell },
   { href: '/exercises', label: 'Progress', icon: TrendingUp },
   { href: '/insights', label: 'Insights', icon: Sparkles },
