@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/components/auth-provider'
-import { Brain, Plus, MessageSquare, Clock, User, Stethoscope, LogOut, Dumbbell, TrendingUp, Sparkles, MoreHorizontal, HeartPulse, Compass, Target } from 'lucide-react'
+import { Brain, Plus, MessageSquare, Clock, User, Stethoscope, LogOut, Dumbbell, TrendingUp, Sparkles, MoreHorizontal, HeartPulse, Compass, Target, Plug } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { LogoTile } from '@/components/logo'
 import {
@@ -29,6 +29,7 @@ const navItems = [
   { href: '/ask', label: 'Ask', icon: MessageSquare },
   { href: '/lab-reports', label: 'Reports', icon: Stethoscope },
   { href: '/issues', label: 'Issues', icon: HeartPulse },
+  { href: '/connect', label: 'Connect', icon: Plug },
   { href: '/profile', label: 'Profile', icon: User },
 ]
 
