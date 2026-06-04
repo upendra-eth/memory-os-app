@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/components/auth-provider'
-import { Brain, Plus, MessageSquare, Clock, User, Stethoscope, LogOut, Dumbbell, TrendingUp, Sparkles, MoreHorizontal } from 'lucide-react'
+import { Brain, Plus, MessageSquare, Clock, User, Stethoscope, LogOut, Dumbbell, TrendingUp, Sparkles, MoreHorizontal, HeartPulse } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import {
   Sheet,
@@ -24,7 +24,8 @@ const navItems = [
   { href: '/insights', label: 'Insights', icon: Sparkles },
   { href: '/timeline', label: 'Timeline', icon: Clock },
   { href: '/ask', label: 'Ask', icon: MessageSquare },
-  { href: '/lab-reports', label: 'Labs', icon: Stethoscope },
+  { href: '/lab-reports', label: 'Reports', icon: Stethoscope },
+  { href: '/issues', label: 'Issues', icon: HeartPulse },
   { href: '/profile', label: 'Profile', icon: User },
 ]
 

@@ -56,7 +56,46 @@ export async function POST(req: Request) {
     const entries = await searchEntries(profile.id, question, 20)
     const context = formatEntriesForContext(entries)
 
-    const fullContext = `User: ${profile?.display_name || 'User'}\nGoals: ${profile?.fitness_goal || 'Not specified'}\n\nRecent Life Logs:\n${context}`
+    // Pull in health reports and active issues so the assistant can reason over
+    // the user's whole health picture, not just daily logs.
+    const [{ data: reports }, { data: issues }] = await Promise.all([
+      supabase
+        .from('lab_results')
+        .select('test_name, test_date, results, ai_analysis')
+        .eq('user_id', profile.id)
+        .order('test_date', { ascending: false })
+        .limit(8),
+      supabase
+        .from('health_issues')
+        .select('title, category, status, severity_1_10, description, started_on')
+        .eq('user_id', profile.id)
+        .neq('status', 'resolved')
+        .order('updated_at', { ascending: false })
+        .limit(20),
+    ])
+
+    const reportsBlock = (reports || []).length
+      ? '\n\nHealth Reports:\n' +
+        (reports || [])
+          .map((r: any) => {
+            const markers = Array.isArray(r.results?.markers)
+              ? r.results.markers
+                  .map((m: any) => `${m.name}: ${m.value ?? '—'}${m.unit ? ' ' + m.unit : ''}${m.flag && m.flag !== 'normal' ? ` (${m.flag})` : ''}`)
+                  .join('; ')
+              : ''
+            return `[${r.test_date || '?'}] ${r.test_name}: ${markers}${r.ai_analysis ? ` — ${r.ai_analysis}` : ''}`
+          })
+          .join('\n')
+      : ''
+
+    const issuesBlock = (issues || []).length
+      ? '\n\nActive Health Issues:\n' +
+        (issues || [])
+          .map((i: any) => `${i.title} (${i.category || 'other'}, ${i.status}${typeof i.severity_1_10 === 'number' ? `, severity ${i.severity_1_10}/10` : ''})${i.description ? `: ${i.description}` : ''}`)
+          .join('\n')
+      : ''
+
+    const fullContext = `User: ${profile?.display_name || 'User'}\nGoals: ${profile?.fitness_goal || 'Not specified'}\n\nRecent Life Logs:\n${context}${reportsBlock}${issuesBlock}`
 
     // Generate answer using Gemini
     const answer = await generateAnswer(question, fullContext, apiKey, conversationHistory)

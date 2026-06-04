@@ -26,6 +26,8 @@ import {
   UserCircle,
   ArrowRight,
   Sparkles,
+  HeartPulse,
+  Stethoscope,
 } from 'lucide-react'
 import {
   ResponsiveContainer,
@@ -70,6 +72,8 @@ export default function DashboardPage() {
   const [tdee, setTdee] = useState<number | null>(null)
   const [latest, setLatest] = useState<ExtractedJSON | null>(null)
   const [needsProfile, setNeedsProfile] = useState(false)
+  const [latestReport, setLatestReport] = useState<{ name: string; date: string } | null>(null)
+  const [activeIssues, setActiveIssues] = useState(0)
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
@@ -137,6 +141,23 @@ export default function DashboardPage() {
           .limit(1)
           .single()
         setLatest((latestEntry?.extracted_json as ExtractedJSON) ?? null)
+
+        // Health hub: latest report + count of unresolved issues
+        const { data: reportRow } = await supabase
+          .from('lab_results')
+          .select('test_name, test_date')
+          .eq('user_id', profileId)
+          .order('test_date', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        setLatestReport(reportRow ? { name: reportRow.test_name || 'Report', date: reportRow.test_date } : null)
+
+        const { count: issuesCount } = await supabase
+          .from('health_issues')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', profileId)
+          .neq('status', 'resolved')
+        setActiveIssues(issuesCount ?? 0)
       } catch (e) {
         console.error('[v0] dashboard load error:', e)
       } finally {
@@ -187,6 +208,36 @@ export default function DashboardPage() {
 
           {/* Daily profile prompt notification */}
           <ProfilePromptCard />
+
+          {/* Health hub summary — only shows once there's something to show */}
+          {(latestReport || activeIssues > 0) && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Link href="/issues">
+                <Card className="p-4 flex items-center gap-3 hover:bg-secondary/50 transition-colors h-full">
+                  <div className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600 flex-shrink-0">
+                    <HeartPulse className="h-4 w-4" />
+                  </div>
+                  <div className="text-sm">
+                    <p className="font-medium">{activeIssues > 0 ? `${activeIssues} active issue${activeIssues > 1 ? 's' : ''}` : 'No active issues'}</p>
+                    <p className="text-xs text-muted-foreground">Track pain, posture, hair fall & more</p>
+                  </div>
+                </Card>
+              </Link>
+              <Link href="/lab-reports">
+                <Card className="p-4 flex items-center gap-3 hover:bg-secondary/50 transition-colors h-full">
+                  <div className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary flex-shrink-0">
+                    <Stethoscope className="h-4 w-4" />
+                  </div>
+                  <div className="text-sm min-w-0">
+                    <p className="font-medium truncate">{latestReport ? latestReport.name : 'No reports yet'}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {latestReport ? `Latest report · ${new Date(latestReport.date).toLocaleDateString('en-IN')}` : 'Labs, checkups & body scans'}
+                    </p>
+                  </div>
+                </Card>
+              </Link>
+            </div>
+          )}
 
           {!hasData ? (
             <FirstRunEmptyState needsProfile={needsProfile} />

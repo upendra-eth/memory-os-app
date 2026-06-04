@@ -1,115 +1,218 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { Navigation } from '@/components/navigation'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Textarea } from '@/components/ui/textarea'
+import { Spinner } from '@/components/ui/spinner'
 import { useToast } from '@/hooks/use-toast'
-import { Upload, AlertCircle, CheckCircle } from 'lucide-react'
+import { useAuth } from '@/components/auth-provider'
+import {
+  getHealthReports,
+  saveHealthReport,
+  deleteHealthReport,
+  type HealthReport,
+} from '@/app/health-actions'
+import { REPORT_COPY_PROMPT } from '@/lib/prompts/health'
+import {
+  FlaskConical,
+  Copy,
+  Check,
+  Loader2,
+  Trash2,
+  AlertTriangle,
+  Stethoscope,
+  Scale,
+} from 'lucide-react'
 
-interface LabResult {
-  id: string
-  test_name: string
-  test_date: string
-  results: Record<string, unknown>
-  ai_analysis: string
+const TYPE_META: Record<string, { label: string; icon: typeof FlaskConical }> = {
+  lab: { label: 'Lab panel', icon: FlaskConical },
+  checkup: { label: 'Full checkup', icon: Stethoscope },
+  body_composition: { label: 'Body composition', icon: Scale },
 }
 
-export default function LabReportsPage() {
-  const [results, setResults] = useState<LabResult[]>([])
-  const [uploading, setUploading] = useState(false)
+export default function HealthReportsPage() {
+  const { user, isLoading: authLoading } = useAuth()
+  const [reports, setReports] = useState<HealthReport[]>([])
+  const [loading, setLoading] = useState(true)
+  const [paste, setPaste] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [copied, setCopied] = useState(false)
   const { toast } = useToast()
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+  useEffect(() => {
+    if (authLoading) return
+    if (!user) {
+      setLoading(false)
+      return
+    }
+    getHealthReports()
+      .then(setReports)
+      .finally(() => setLoading(false))
+  }, [authLoading, user])
 
-    setUploading(true)
+  const handleCopy = async () => {
     try {
-      const formData = new FormData()
-      formData.append('file', file)
-
-      const response = await fetch('/api/lab-reports', {
-        method: 'POST',
-        body: formData,
-      })
-
-      if (!response.ok) throw new Error('Upload failed')
-
-      const data = await response.json()
-      setResults((prev) => [data.result, ...prev])
-
-      toast({
-        title: 'Success',
-        description: `${data.result.test_name} uploaded and analyzed`,
-      })
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to upload lab report',
-        variant: 'destructive',
-      })
-    } finally {
-      setUploading(false)
+      await navigator.clipboard.writeText(REPORT_COPY_PROMPT)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+      toast({ title: 'Copied', description: 'Paste it into ChatGPT with your report, then paste its reply back here.' })
+    } catch {
+      toast({ title: 'Copy failed', description: 'Select the text manually.', variant: 'destructive' })
     }
   }
 
+  const handleSave = async () => {
+    if (!paste.trim()) return
+    setSaving(true)
+    const res = await saveHealthReport(paste)
+    setSaving(false)
+    if (res.success && res.report) {
+      setReports((prev) => [res.report!, ...prev])
+      setPaste('')
+      toast({ title: 'Saved', description: `${res.report.test_name} added to your history.` })
+    } else {
+      toast({ title: 'Error', description: res.error || 'Failed to save.', variant: 'destructive' })
+    }
+  }
+
+  const handleDelete = async (id: string) => {
+    setReports((prev) => prev.filter((r) => r.id !== id))
+    await deleteHealthReport(id)
+  }
+
   return (
-    <div className="max-w-4xl mx-auto p-6">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-2">Lab Reports</h1>
-        <p className="text-muted-foreground">Upload and track your medical test results</p>
-      </div>
+    <div className="flex flex-col md:flex-row min-h-screen">
+      <Navigation />
+      <main className="flex-1 p-4 md:p-8 pb-24 md:pb-8">
+        <div className="max-w-3xl mx-auto space-y-6">
+          <header>
+            <h1 className="text-3xl font-bold tracking-tight">Health Reports</h1>
+            <p className="text-muted-foreground mt-1">
+              Lab panels, full-body checkups, and gym body-composition (InBody) scans — all in one place.
+            </p>
+          </header>
 
-      {/* Upload Section */}
-      <Card className="p-8 mb-8 border-dashed border-2 hover:bg-secondary transition">
-        <label className="cursor-pointer flex flex-col items-center justify-center">
-          <Upload className="w-12 h-12 text-primary/50 mb-4" />
-          <p className="text-lg font-semibold mb-1">Upload Lab Report</p>
-          <p className="text-sm text-muted-foreground mb-4">PDF or image of your lab results</p>
-          <Button disabled={uploading} variant="outline">
-            {uploading ? 'Uploading...' : 'Choose File'}
-          </Button>
-          <input
-            type="file"
-            accept="image/*,.pdf"
-            onChange={handleFileUpload}
-            disabled={uploading}
-            className="hidden"
-          />
-        </label>
-      </Card>
-
-      {/* Results */}
-      <div className="space-y-4">
-        {results.map((result) => (
-          <Card key={result.id} className="p-6">
-            <div className="flex items-start gap-4">
-              <CheckCircle className="w-6 h-6 text-green-500 flex-shrink-0 mt-1" />
-              <div className="flex-1">
-                <h3 className="text-lg font-semibold mb-2">{result.test_name}</h3>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Test Date: {new Date(result.test_date).toLocaleDateString('en-IN')}
-                </p>
-                <div className="bg-blue-50 border border-blue-200 rounded p-4 mb-4">
-                  <p className="text-sm text-blue-900">{result.ai_analysis}</p>
-                </div>
-                <div className="flex items-start gap-2 p-3 rounded bg-amber-50 border border-amber-200">
-                  <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-                  <p className="text-sm text-amber-700">
-                    Discuss with your doctor for personalized interpretation of these results.
-                  </p>
-                </div>
-              </div>
+          {/* How-to / paste box */}
+          <Card className="p-4 bg-blue-50 border-blue-200 space-y-3">
+            <div>
+              <h3 className="font-semibold text-blue-900 mb-2">Add a report</h3>
+              <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
+                <li>Copy the prompt below and open ChatGPT (or Google AI Studio).</li>
+                <li>Paste the prompt, then attach your report PDF or a photo of it.</li>
+                <li>Copy ChatGPT&apos;s JSON reply and paste it in the box here, then Save.</li>
+              </ol>
             </div>
+            <Button type="button" size="sm" variant="outline" onClick={handleCopy} className="bg-white">
+              {copied ? <Check className="h-4 w-4 mr-1.5 text-emerald-600" /> : <Copy className="h-4 w-4 mr-1.5" />}
+              {copied ? 'Copied!' : 'Copy report prompt for ChatGPT'}
+            </Button>
           </Card>
-        ))}
+
+          <div className="space-y-2">
+            <label className="block text-sm font-medium">Paste ChatGPT&apos;s reply (or the raw report text)</label>
+            <Textarea
+              value={paste}
+              onChange={(e) => setPaste(e.target.value)}
+              placeholder={'Paste the JSON block ChatGPT returns, or just paste the raw report text and we\'ll structure it.'}
+              rows={8}
+              disabled={saving}
+              className="font-mono text-sm"
+            />
+            <Button onClick={handleSave} disabled={saving || !paste.trim()} className="w-full sm:w-auto">
+              {saving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving…</> : 'Save report'}
+            </Button>
+          </div>
+
+          {/* History */}
+          <section className="space-y-4">
+            <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Your reports</h2>
+            {loading ? (
+              <div className="flex justify-center py-12"><Spinner /></div>
+            ) : reports.length === 0 ? (
+              <Card className="p-10 text-center text-muted-foreground">
+                No reports yet. Add your first lab panel, checkup, or body scan above.
+              </Card>
+            ) : (
+              reports.map((r) => <ReportCard key={r.id} report={r} onDelete={() => handleDelete(r.id)} />)
+            )}
+          </section>
+        </div>
+      </main>
+    </div>
+  )
+}
+
+function ReportCard({ report, onDelete }: { report: HealthReport; onDelete: () => void }) {
+  const meta = TYPE_META[report.report_type] || TYPE_META.lab
+  const Icon = meta.icon
+  const flagged = report.markers.filter((m) => m.flag === 'low' || m.flag === 'high')
+
+  return (
+    <Card className="p-5 space-y-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <div className="inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <Icon className="h-5 w-5" />
+          </div>
+          <div>
+            <h3 className="font-semibold leading-tight">{report.test_name}</h3>
+            <p className="text-xs text-muted-foreground">
+              {meta.label}
+              {report.test_date ? ` · ${new Date(report.test_date).toLocaleDateString('en-IN')}` : ''}
+            </p>
+          </div>
+        </div>
+        <button onClick={onDelete} className="text-muted-foreground hover:text-destructive transition-colors" aria-label="Delete report">
+          <Trash2 className="h-4 w-4" />
+        </button>
       </div>
 
-      {results.length === 0 && (
-        <Card className="p-8 text-center">
-          <p className="text-muted-foreground">No lab reports uploaded yet</p>
-        </Card>
+      {report.summary && (
+        <p className="text-sm text-foreground/90 bg-secondary/50 rounded-md p-3">{report.summary}</p>
       )}
-    </div>
+
+      {report.markers.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs text-muted-foreground">
+                <th className="py-1 pr-3 font-medium">Marker</th>
+                <th className="py-1 pr-3 font-medium">Value</th>
+                <th className="py-1 font-medium">Reference</th>
+              </tr>
+            </thead>
+            <tbody>
+              {report.markers.map((m, i) => {
+                const out = m.flag === 'low' || m.flag === 'high'
+                return (
+                  <tr key={i} className="border-t border-border/60">
+                    <td className="py-1.5 pr-3">{m.name}</td>
+                    <td className={`py-1.5 pr-3 tabular-nums font-medium ${out ? 'text-amber-600' : ''}`}>
+                      {m.value ?? '—'}{m.unit ? ` ${m.unit}` : ''}
+                      {m.flag && m.flag !== 'normal' ? <Badge variant="outline" className="ml-2 text-[10px] capitalize">{m.flag}</Badge> : null}
+                    </td>
+                    <td className="py-1.5 text-muted-foreground tabular-nums">
+                      {m.reference_min != null || m.reference_max != null
+                        ? `${m.reference_min ?? '—'}–${m.reference_max ?? '—'}`
+                        : '—'}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {flagged.length > 0 && (
+        <div className="flex items-start gap-2 rounded-md bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
+          <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+          <span>{flagged.length} marker{flagged.length > 1 ? 's' : ''} outside the reference range. Educational only — discuss with your doctor.</span>
+        </div>
+      )}
+    </Card>
   )
 }
