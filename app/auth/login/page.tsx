@@ -10,9 +10,10 @@ import { Label } from '@/components/ui/label'
 import { Card } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Separator } from '@/components/ui/separator'
-import { Brain, Mail, Lock, Github, Loader2, AlertCircle, Sparkles } from 'lucide-react'
+import { Mail, Lock, Github, Loader2, AlertCircle, Sparkles } from 'lucide-react'
 import { signInWithPassword } from '@/app/auth/auth-actions'
 import { createClient } from '@/lib/supabase/client'
+import { LogoTile } from '@/components/logo'
 
 function LoginForm() {
   const [error, setError] = useState<string | null>(null)
@@ -80,10 +81,10 @@ function LoginForm() {
       <div className="w-full max-w-md relative z-10">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-primary to-accent text-white mb-4 shadow-lg shadow-primary/25">
-            <Brain className="h-8 w-8" />
+          <div className="mb-4 flex justify-center">
+            <LogoTile size="lg" float />
           </div>
-          <h1 className="text-3xl font-bold tracking-tight">Memory OS</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-gradient-brand">Memory OS</h1>
           <p className="text-muted-foreground mt-1">Your Personal Data Intelligence</p>
         </div>
 

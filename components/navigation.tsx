@@ -5,8 +5,9 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/components/auth-provider'
-import { Brain, Plus, MessageSquare, Clock, User, Stethoscope, LogOut, Dumbbell, TrendingUp, Sparkles, MoreHorizontal, HeartPulse } from 'lucide-react'
+import { Brain, Plus, MessageSquare, Clock, User, Stethoscope, LogOut, Dumbbell, TrendingUp, Sparkles, MoreHorizontal, HeartPulse, Compass } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { LogoTile } from '@/components/logo'
 import {
   Sheet,
   SheetClose,
@@ -22,6 +23,7 @@ const navItems = [
   { href: '/training', label: 'Training', icon: Dumbbell },
   { href: '/exercises', label: 'Progress', icon: TrendingUp },
   { href: '/insights', label: 'Insights', icon: Sparkles },
+  { href: '/discover', label: 'Discover', icon: Compass },
   { href: '/timeline', label: 'Timeline', icon: Clock },
   { href: '/ask', label: 'Ask', icon: MessageSquare },
   { href: '/lab-reports', label: 'Reports', icon: Stethoscope },
@@ -63,11 +65,9 @@ export function Navigation() {
       <div className="flex items-stretch justify-around gap-1 py-2 md:flex-col md:justify-start md:gap-2 md:p-4 md:h-full">
         {/* Desktop Logo */}
         <div className="hidden md:flex items-center gap-3 px-4 py-4 mb-4">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-            <Brain className="h-6 w-6" />
-          </div>
+          <LogoTile float />
           <div>
-            <h1 className="text-lg font-semibold text-foreground">Memory OS</h1>
+            <h1 className="text-lg font-semibold text-gradient-brand">Memory OS</h1>
             <p className="text-xs text-muted-foreground">Personal Intelligence</p>
           </div>
         </div>

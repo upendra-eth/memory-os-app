@@ -28,6 +28,7 @@ import {
   Sparkles,
   HeartPulse,
   Stethoscope,
+  Compass,
 } from 'lucide-react'
 import {
   ResponsiveContainer,
@@ -209,6 +210,20 @@ export default function DashboardPage() {
           {/* Daily profile prompt notification */}
           <ProfilePromptCard />
 
+          {/* Discover teaser */}
+          <Link href="/discover">
+            <Card className="p-4 flex items-center gap-3 bg-gradient-to-r from-primary/10 to-accent/10 border-primary/20 hover:from-primary/15 hover:to-accent/15 transition-colors">
+              <div className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-accent text-white flex-shrink-0">
+                <Compass className="h-4 w-4" />
+              </div>
+              <div className="flex-1 text-sm">
+                <p className="font-medium">Today&apos;s Discover brief</p>
+                <p className="text-xs text-muted-foreground">Growth, health & time tips + a food worth trying</p>
+              </div>
+              <ArrowRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+            </Card>
+          </Link>
+
           {/* Health hub summary — only shows once there's something to show */}
           {(latestReport || activeIssues > 0) && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -260,7 +275,7 @@ export default function DashboardPage() {
           {/* ---- TODAY / LATEST SNAPSHOT ---- */}
           <section>
             <h2 className="text-sm font-medium text-muted-foreground mb-3 uppercase tracking-wide">{snapshotLabel}</h2>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 stagger">
               <SnapshotCard
                 icon={<Flame className="h-4 w-4" />}
                 label="Calories"
@@ -327,7 +342,7 @@ export default function DashboardPage() {
               </div>
 
               {/* Charts */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 stagger">
                 <ChartCard title={`Calories vs TDEE${tdee ? ` (${tdee})` : ''}`}>
                   <ComposedChart data={rows}>
                     <CartesianGrid strokeDasharray="3 3" className="stroke-border" />

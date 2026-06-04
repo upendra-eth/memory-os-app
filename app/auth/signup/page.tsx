@@ -9,7 +9,8 @@ import { Label } from '@/components/ui/label'
 import { Card } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Separator } from '@/components/ui/separator'
-import { Brain, Mail, Lock, User, Github, Loader2, AlertCircle, Sparkles, Shield, Zap, BarChart3, MailCheck } from 'lucide-react'
+import { Mail, Lock, User, Github, Loader2, AlertCircle, Sparkles, Shield, Zap, BarChart3, MailCheck } from 'lucide-react'
+import { LogoTile } from '@/components/logo'
 import { signUpWithPassword } from '@/app/auth/auth-actions'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/components/auth-provider'
@@ -102,10 +103,10 @@ export default function SignUpPage() {
       <div className="w-full max-w-md relative z-10">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-primary to-accent text-white mb-4 shadow-lg shadow-primary/25">
-            <Brain className="h-8 w-8" />
+          <div className="mb-4 flex justify-center">
+            <LogoTile size="lg" float />
           </div>
-          <h1 className="text-3xl font-bold tracking-tight">Join Memory OS</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-gradient-brand">Join Memory OS</h1>
           <p className="text-muted-foreground mt-1">Start building your personal intelligence</p>
         </div>
 
