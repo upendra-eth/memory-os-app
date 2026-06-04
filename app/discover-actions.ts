@@ -1,22 +1,8 @@
 'use server'
 
 import { GoogleGenerativeAI } from '@google/generative-ai'
-import { createClient } from '@/lib/supabase/server'
 
 const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY
-
-async function getAuth(): Promise<{ userId: string; supabase: Awaited<ReturnType<typeof createClient>> } | null> {
-  const supabase = await createClient()
-  const { data: { user }, error } = await supabase.auth.getUser()
-  if (error || !user) return null
-  const { data: profile } = await supabase
-    .from('user_profile')
-    .select('id')
-    .eq('auth_user_id', user.id)
-    .single()
-  if (!profile) return null
-  return { userId: profile.id, supabase }
-}
 
 function extractJson(text: string): any | null {
   if (!text) return null
@@ -31,28 +17,6 @@ function extractJson(text: string): any | null {
   } catch {
     return null
   }
-}
-
-/** Read the user's saved city (stored in user_profile.location). */
-export async function getProfileCity(): Promise<string | null> {
-  const auth = await getAuth()
-  if (!auth) return null
-  const { data } = await auth.supabase
-    .from('user_profile')
-    .select('location')
-    .eq('id', auth.userId)
-    .single()
-  return (data?.location as string) || null
-}
-
-export async function saveCity(city: string): Promise<{ success: boolean }> {
-  const auth = await getAuth()
-  if (!auth) return { success: false }
-  await auth.supabase
-    .from('user_profile')
-    .update({ location: city.trim(), updated_at: new Date().toISOString() })
-    .eq('id', auth.userId)
-  return { success: true }
 }
 
 export interface DailyBrief {

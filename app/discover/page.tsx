@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
 import { useToast } from '@/hooks/use-toast'
 import { useAuth } from '@/components/auth-provider'
-import { generateDailyBrief, getProfileCity, saveCity, type DailyBrief } from '@/app/discover-actions'
+import { generateDailyBrief, type DailyBrief } from '@/app/discover-actions'
 import { Compass, RefreshCw, MapPin, Sparkles, CheckCircle2, Apple, Lightbulb } from 'lucide-react'
 
 const TOPIC_TINT: Record<string, string> = {
@@ -19,6 +19,7 @@ const TOPIC_TINT: Record<string, string> = {
 }
 
 const todayKey = () => new Date().toISOString().slice(0, 10)
+const CITY_KEY = 'discover:city'
 
 export default function DiscoverPage() {
   const { user, isLoading: authLoading } = useAuth()
@@ -62,16 +63,20 @@ export default function DiscoverPage() {
       setLoading(false)
       return
     }
-    getProfileCity().then((c) => {
-      setCity(c)
-      load(c)
-    })
+    let saved: string | null = null
+    try {
+      saved = localStorage.getItem(CITY_KEY)
+    } catch {}
+    setCity(saved)
+    load(saved)
   }, [authLoading, user, load])
 
   const handleSaveCity = async () => {
     const c = cityInput.trim()
     if (!c) return
-    await saveCity(c)
+    try {
+      localStorage.setItem(CITY_KEY, c)
+    } catch {}
     setCity(c)
     toast({ title: 'Saved', description: `Food picks will be tailored to ${c}.` })
     load(c, true)
