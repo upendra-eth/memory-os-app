@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { createClient } from '@/lib/supabase/server'
+import { enforceAiLimit } from '@/lib/rate-limit'
 import type { GeminiResponse } from '@/lib/types'
 
 export const maxDuration = 60
@@ -50,6 +51,11 @@ export async function POST(req: Request) {
 
     if (!question || typeof question !== 'string') {
       return Response.json({ error: 'Question is required' }, { status: 400 })
+    }
+
+    const rl = await enforceAiLimit()
+    if (!rl.allowed) {
+      return Response.json({ error: rl.error }, { status: 429 })
     }
 
     const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY

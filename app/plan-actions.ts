@@ -3,6 +3,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { createClient } from '@/lib/supabase/server'
 import { exercisePlanPrompt, type ExercisePlan } from '@/lib/prompts/plan'
+import { enforceAiLimit } from '@/lib/rate-limit'
 
 const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY
 
@@ -66,6 +67,9 @@ export async function generateAndSavePlan(opts: {
 }): Promise<{ success: boolean; plan?: SavedPlan; error?: string }> {
   if (!opts.goals.trim()) return { success: false, error: 'Describe your goal first.' }
   if (!GEMINI_API_KEY) return { success: false, error: 'AI is not configured.' }
+
+  const rl = await enforceAiLimit()
+  if (!rl.allowed) return { success: false, error: rl.error }
 
   const auth = await getAuth()
   if (!auth) return { success: false, error: 'Not signed in.' }

@@ -1,13 +1,14 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/components/auth-provider'
-import { Brain, Plus, MessageSquare, Clock, User, Stethoscope, LogOut, Dumbbell, TrendingUp, Sparkles, MoreHorizontal, HeartPulse, Compass, Target, Plug } from 'lucide-react'
+import { Brain, Plus, MessageSquare, Clock, User, Stethoscope, LogOut, Dumbbell, TrendingUp, Sparkles, MoreHorizontal, HeartPulse, Compass, Target, Plug, ShieldCheck } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { LogoTile } from '@/components/logo'
+import { amIAdmin } from '@/app/admin-actions'
 import {
   Sheet,
   SheetClose,
@@ -42,6 +43,14 @@ export function Navigation() {
   const pathname = usePathname()
   const { user, signOut } = useAuth()
   const [moreOpen, setMoreOpen] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
+
+  useEffect(() => {
+    if (user) amIAdmin().then(setIsAdmin).catch(() => setIsAdmin(false))
+    else setIsAdmin(false)
+  }, [user])
+
+  const items = isAdmin ? [...navItems, { href: '/admin', label: 'Admin', icon: ShieldCheck }] : navItems
 
   const displayName =
     user?.user_metadata?.display_name ||
@@ -50,8 +59,8 @@ export function Navigation() {
     'User'
   const initials = displayName.slice(0, 2).toUpperCase()
 
-  const primaryItems = navItems.filter((i) => MOBILE_PRIMARY.includes(i.href))
-  const moreItems = navItems.filter((i) => !MOBILE_PRIMARY.includes(i.href))
+  const primaryItems = items.filter((i) => MOBILE_PRIMARY.includes(i.href))
+  const moreItems = items.filter((i) => !MOBILE_PRIMARY.includes(i.href))
   const moreActive = moreItems.some((i) => i.href === pathname)
 
   const itemClasses = (isActive: boolean) =>
@@ -76,7 +85,7 @@ export function Navigation() {
 
         {/* ---- DESKTOP: full list ---- */}
         <div className="hidden md:flex md:flex-col md:gap-2">
-          {navItems.map((item) => {
+          {items.map((item) => {
             const Icon = item.icon
             const isActive = pathname === item.href
             return (

@@ -8,6 +8,7 @@ import {
   type HealthReportJSON,
   type HealthIssueJSON,
 } from '@/lib/prompts/health'
+import { enforceAiLimit } from '@/lib/rate-limit'
 
 const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY
 
@@ -93,6 +94,8 @@ export async function saveHealthReport(paste: string): Promise<{ success: boolea
 
   let parsed = extractJson(paste) as Partial<HealthReportJSON> | null
   if (!parsed || !Array.isArray(parsed.markers)) {
+    const rl = await enforceAiLimit()
+    if (!rl.allowed) return { success: false, error: rl.error }
     parsed = (await geminiJson(reportNormalizePrompt(paste))) as Partial<HealthReportJSON> | null
   }
   if (!parsed) {
@@ -179,6 +182,8 @@ export async function saveHealthIssue(text: string): Promise<{ success: boolean;
 
   let parsed = extractJson(text) as Partial<HealthIssueJSON> | null
   if (!parsed || !parsed.title) {
+    const rl = await enforceAiLimit()
+    if (!rl.allowed) return { success: false, error: rl.error }
     parsed = (await geminiJson(issueStructurePrompt(text))) as Partial<HealthIssueJSON> | null
   }
   // Final fallback: store the raw text as the description so nothing is lost.

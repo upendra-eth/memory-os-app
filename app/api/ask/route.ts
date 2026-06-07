@@ -1,4 +1,5 @@
 import { searchEntries, generateAnswer } from '@/lib/rag'
+import { enforceAiLimit } from '@/lib/rate-limit'
 import { formatEntriesForContext } from '@/lib/rag-format'
 import { createClient } from '@/lib/supabase/server'
 
@@ -32,6 +33,11 @@ export async function POST(req: Request) {
         { error: 'Question is required' },
         { status: 400 }
       )
+    }
+
+    const rl = await enforceAiLimit()
+    if (!rl.allowed) {
+      return Response.json({ error: rl.error }, { status: 429 })
     }
 
     // Format the recent conversation turns so follow-up questions have context.

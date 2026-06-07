@@ -1,6 +1,7 @@
 'use server'
 
 import { GoogleGenerativeAI } from '@google/generative-ai'
+import { enforceAiLimit } from '@/lib/rate-limit'
 
 const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY
 
@@ -44,6 +45,9 @@ const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 
  */
 export async function generateDailyBrief(city?: string): Promise<{ success: boolean; brief?: DailyBrief; error?: string }> {
   if (!GEMINI_API_KEY) return { success: false, error: 'AI is not configured.' }
+
+  const rl = await enforceAiLimit()
+  if (!rl.allowed) return { success: false, error: rl.error }
 
   const now = new Date()
   const dayOfYear = Math.floor((now.getTime() - new Date(now.getFullYear(), 0, 0).getTime()) / 86400000)

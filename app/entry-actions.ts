@@ -6,6 +6,7 @@ import { getNormalizerPrompt } from '@/lib/prompts/normalizer'
 import type { ExtractedJSON } from '@/lib/extraction-schema'
 import { sanitizeExtractedJSON, isEmptyExtractedJSON } from '@/lib/extraction-schema'
 import { parseThreeSectionPaste } from '@/lib/parse-entry'
+import { enforceAiLimit } from '@/lib/rate-limit'
 
 const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY
 
@@ -353,6 +354,11 @@ export async function processAndSaveEntry(
       error:
         'No EXTRACTED section found. Expected format: === RAW === ... === NARRATIVE === ... === EXTRACTED === ...',
     }
+  }
+
+  const rl = await enforceAiLimit()
+  if (!rl.allowed) {
+    return { success: false, step: 'normalize', error: rl.error || 'AI limit reached' }
   }
 
   const knownEntities = await getKnownEntities()

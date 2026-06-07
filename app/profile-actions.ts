@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { getProfileExtractorPrompt } from '@/lib/prompts/profile-extractor'
 import { calculateCompleteness, selectNextPrompt } from '@/lib/profile-prompts'
+import { enforceAiLimit } from '@/lib/rate-limit'
 
 const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY
 
@@ -82,6 +83,9 @@ export async function extractProfileFromChat(
   try {
     const auth = await getAuthProfile()
     if (!auth) return { success: false, error: 'Not authenticated' }
+
+    const rl = await enforceAiLimit()
+    if (!rl.allowed) return { success: false, error: rl.error }
 
     const genAI = new GoogleGenerativeAI(GEMINI_API_KEY)
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' })
