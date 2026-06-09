@@ -74,14 +74,14 @@ export function Navigation() {
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80 md:static md:border-t-0 md:border-r md:h-screen md:w-64 md:flex-shrink-0">
       <div className="flex items-stretch justify-around gap-1 py-2 md:flex-col md:justify-start md:gap-2 md:p-4 md:h-full">
-        {/* Desktop Logo */}
-        <div className="hidden md:flex items-center gap-3 px-4 py-4 mb-4">
+        {/* Desktop Logo — links home */}
+        <Link href="/dashboard" className="hidden md:flex items-center gap-3 px-4 py-4 mb-4 rounded-lg hover:bg-secondary/50 transition-colors">
           <LogoTile float />
           <div>
             <h1 className="text-lg font-semibold text-gradient-brand">Memory OS</h1>
             <p className="text-xs text-muted-foreground">Personal Intelligence</p>
           </div>
-        </div>
+        </Link>
 
         {/* ---- DESKTOP: full list ---- */}
         <div className="hidden md:flex md:flex-col md:gap-2">

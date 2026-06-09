@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/components/auth-provider'
+import { Navigation } from '@/components/navigation'
 import Link from 'next/link'
 import { ChevronRight, Calendar } from 'lucide-react'
 import type { DailyAggregate } from '@/lib/types'
@@ -86,8 +87,10 @@ export default function TimelinePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-primary/5 to-background">
-      <div className="container mx-auto px-4 py-8">
+    <div className="flex flex-col md:flex-row min-h-screen">
+      <Navigation />
+      <main className="flex-1 bg-gradient-to-br from-background via-primary/5 to-background pb-24 md:pb-0">
+        <div className="container mx-auto px-4 py-8">
         <div className="mb-8">
           <div className="flex items-center gap-3 mb-2">
             <Calendar className="h-6 w-6 text-primary" />
@@ -146,7 +149,8 @@ export default function TimelinePage() {
             })}
           </div>
         )}
-      </div>
+        </div>
+      </main>
     </div>
   )
 }
