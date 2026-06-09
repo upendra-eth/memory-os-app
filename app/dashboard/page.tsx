@@ -186,6 +186,20 @@ export default function DashboardPage() {
           {/* Daily profile prompt notification */}
           <ProfilePromptCard />
 
+          {/* Workout — front-and-center */}
+          <Link href="/workout">
+            <Card className="p-4 flex items-center gap-3 bg-gradient-to-r from-primary/10 to-accent/10 border-primary/20 hover:from-primary/15 hover:to-accent/15 transition-colors">
+              <div className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-accent text-white flex-shrink-0">
+                <Dumbbell className="h-5 w-5" />
+              </div>
+              <div className="flex-1">
+                <p className="font-semibold">Today&apos;s Workout</p>
+                <p className="text-xs text-muted-foreground">Your split + last weights you lifted, ready to beat</p>
+              </div>
+              <ArrowRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+            </Card>
+          </Link>
+
           {/* Plan + Discover teasers */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Link href="/plan">

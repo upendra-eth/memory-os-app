@@ -12,11 +12,12 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
 import { useAuth } from '@/components/auth-provider'
 import {
-  getActivePlan, generateAndSavePlan, type SavedPlan,
+  getActivePlan, generateAndSavePlan, saveImportedPlan, type SavedPlan,
   getHabits, addHabit, toggleHabitDay, deleteHabit, type Habit,
   getTasks, addTask, toggleTask, deleteTask, type Task,
 } from '@/app/plan-actions'
-import { Dumbbell, Repeat, CheckSquare, Plus, Trash2, Loader2, Sparkles, Flame, Check } from 'lucide-react'
+import { SCHEDULE_COPY_PROMPT } from '@/lib/prompts/schedule'
+import { Dumbbell, Repeat, CheckSquare, Plus, Trash2, Loader2, Sparkles, Flame, Check, Copy, ClipboardPaste } from 'lucide-react'
 
 const todayStr = () => new Date().toISOString().slice(0, 10)
 
@@ -65,7 +66,36 @@ function PlanTab() {
   const [equipment, setEquipment] = useState('')
   const [generating, setGenerating] = useState(false)
   const [editing, setEditing] = useState(false)
+  const [importText, setImportText] = useState('')
+  const [importing, setImporting] = useState(false)
+  const [copiedPrompt, setCopiedPrompt] = useState(false)
   const { toast } = useToast()
+
+  const copyPrompt = async () => {
+    try {
+      await navigator.clipboard.writeText(SCHEDULE_COPY_PROMPT)
+      setCopiedPrompt(true)
+      setTimeout(() => setCopiedPrompt(false), 2000)
+      toast({ title: 'Copied', description: 'Run it in ChatGPT with your schedule, then paste the JSON back here.' })
+    } catch {
+      toast({ title: 'Copy failed', description: 'Select the text manually.', variant: 'destructive' })
+    }
+  }
+
+  const importSchedule = async () => {
+    if (!importText.trim()) return
+    setImporting(true)
+    const res = await saveImportedPlan(importText)
+    setImporting(false)
+    if (res.success && res.plan) {
+      setPlan(res.plan)
+      setEditing(false)
+      setImportText('')
+      toast({ title: 'Schedule imported', description: 'Your plan is set.' })
+    } else {
+      toast({ title: 'Error', description: res.error || 'Failed.', variant: 'destructive' })
+    }
+  }
 
   useEffect(() => {
     getActivePlan().then((p) => {
@@ -113,6 +143,28 @@ function PlanTab() {
           </div>
           <Button onClick={generate} disabled={generating || !goals.trim()}>
             {generating ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Building your plan…</> : <><Sparkles className="h-4 w-4 mr-1.5" />Generate plan</>}
+          </Button>
+        </Card>
+      )}
+
+      {/* Import your own schedule */}
+      {(editing || !plan) && (
+        <Card className="p-5 space-y-3">
+          <div className="flex items-center gap-2">
+            <ClipboardPaste className="h-4 w-4 text-primary" />
+            <h3 className="font-semibold">Already have a schedule?</h3>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Built one in ChatGPT or elsewhere? Copy the prompt, run it in ChatGPT with your schedule, and paste the JSON it returns here.
+          </p>
+          <Button type="button" size="sm" variant="outline" onClick={copyPrompt} className="bg-white">
+            {copiedPrompt ? <Check className="h-4 w-4 mr-1.5 text-emerald-600" /> : <Copy className="h-4 w-4 mr-1.5" />}
+            {copiedPrompt ? 'Copied!' : 'Copy prompt for ChatGPT'}
+          </Button>
+          <Textarea value={importText} onChange={(e) => setImportText(e.target.value)} rows={5}
+            placeholder='Paste the JSON block from ChatGPT here…' disabled={importing} className="font-mono text-xs" />
+          <Button onClick={importSchedule} disabled={importing || !importText.trim()}>
+            {importing ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Importing…</> : 'Import schedule'}
           </Button>
         </Card>
       )}

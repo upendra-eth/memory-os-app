@@ -60,6 +60,56 @@ export async function getActivePlan(): Promise<SavedPlan | null> {
   return (data as SavedPlan) || null
 }
 
+/**
+ * Save a schedule the user built elsewhere and converted to our JSON via the
+ * SCHEDULE_COPY_PROMPT. Parses the pasted JSON directly (no AI cost); if it
+ * isn't valid JSON, falls back to a rate-limited Gemini coercion.
+ */
+export async function saveImportedPlan(paste: string): Promise<{ success: boolean; plan?: SavedPlan; error?: string }> {
+  if (!paste.trim()) return { success: false, error: 'Paste your schedule JSON first.' }
+  const auth = await getAuth()
+  if (!auth) return { success: false, error: 'Not signed in.' }
+  const { userId, supabase } = auth
+
+  let parsed = extractJson(paste)
+  if (!parsed || !Array.isArray(parsed.weekly)) {
+    // Fallback: let Gemini coerce free-form text into the shape (counts against AI limit).
+    const { enforceAiLimit: enforce } = await import('@/lib/rate-limit')
+    const rl = await enforce()
+    if (!rl.allowed) return { success: false, error: rl.error }
+    if (GEMINI_API_KEY) {
+      try {
+        const genAI = new GoogleGenerativeAI(GEMINI_API_KEY)
+        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' })
+        const result = await model.generateContent(
+          `Convert this workout schedule into JSON {summary, weekly:[{day,focus,exercises:[{name,sets,reps,notes}]}] (7 entries Mon-Sun, rest days empty), tips:[]}. Return ONLY JSON.\n\n${paste}`,
+        )
+        parsed = extractJson(result.response.text())
+      } catch (e) {
+        console.error('[v0] saveImportedPlan gemini error:', e)
+      }
+    }
+  }
+  if (!parsed || !Array.isArray(parsed.weekly)) {
+    return { success: false, error: "Couldn't read that. Use the “Copy prompt” button, run it in ChatGPT, and paste the JSON it returns." }
+  }
+
+  const plan: ExercisePlan = {
+    summary: parsed.summary || 'Imported schedule',
+    weekly: parsed.weekly,
+    tips: Array.isArray(parsed.tips) ? parsed.tips : [],
+  }
+
+  await supabase.from('exercise_plans').update({ active: false }).eq('user_id', userId).eq('active', true)
+  const { data, error } = await supabase
+    .from('exercise_plans')
+    .insert({ user_id: userId, goals: 'Imported schedule', days_per_week: plan.weekly.filter((d) => d.exercises?.length).length, equipment: '', plan, active: true })
+    .select()
+    .single()
+  if (error || !data) return { success: false, error: 'Failed to save schedule.' }
+  return { success: true, plan: data as SavedPlan }
+}
+
 export async function generateAndSavePlan(opts: {
   goals: string
   daysPerWeek: number

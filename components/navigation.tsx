@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/components/auth-provider'
-import { Brain, Plus, MessageSquare, Clock, User, Stethoscope, LogOut, Dumbbell, TrendingUp, Sparkles, MoreHorizontal, HeartPulse, Compass, Target, Plug, ShieldCheck } from 'lucide-react'
+import { Brain, Plus, MessageSquare, Clock, User, Stethoscope, LogOut, Dumbbell, TrendingUp, Sparkles, MoreHorizontal, HeartPulse, Compass, Target, Plug, ShieldCheck, Activity } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { LogoTile } from '@/components/logo'
 import { amIAdmin } from '@/app/admin-actions'
@@ -21,8 +21,9 @@ import {
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: Brain },
   { href: '/add', label: 'Add Entry', icon: Plus },
+  { href: '/workout', label: 'Workout', icon: Dumbbell },
   { href: '/plan', label: 'Plan', icon: Target },
-  { href: '/training', label: 'Training', icon: Dumbbell },
+  { href: '/training', label: 'Training', icon: Activity },
   { href: '/exercises', label: 'Progress', icon: TrendingUp },
   { href: '/insights', label: 'Insights', icon: Sparkles },
   { href: '/discover', label: 'Discover', icon: Compass },
@@ -37,7 +38,7 @@ const navItems = [
 // On mobile the bottom bar only has room for a few items; show the most-used
 // ones inline and tuck the rest behind a "More" sheet (which also holds the
 // account / sign-out controls that the desktop sidebar shows at the bottom).
-const MOBILE_PRIMARY = ['/dashboard', '/add', '/ask', '/timeline']
+const MOBILE_PRIMARY = ['/dashboard', '/workout', '/add', '/ask']
 
 export function Navigation() {
   const pathname = usePathname()

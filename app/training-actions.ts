@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import type { ExtractedJSON, Workout, Nutrition, WorkoutSet, DailyTotals, EnergyBalance } from '@/lib/extraction-schema'
+import type { PlanDay } from '@/lib/prompts/plan'
 
 async function getAuthProfileId(): Promise<{ userId: string; supabase: any } | null> {
   const supabase = await createClient()
@@ -182,4 +183,68 @@ export async function getExerciseHistory(exerciseName: string): Promise<Exercise
 
   // One point per session, oldest → newest (good for charting progress)
   return points
+}
+
+// ---------------------------------------------------------------------------
+// Workout board — your schedule for a day + the LAST time you did each exercise
+// (most-recent logged set_log per exercise, so a skipped exercise falls back to
+// the previous session it appeared in). Powers the /workout daily view.
+// ---------------------------------------------------------------------------
+
+export interface ExerciseLast {
+  exercise: string
+  date: string
+  sets: WorkoutSet[]
+}
+
+export interface WorkoutBoard {
+  weekly: PlanDay[] | null
+  lastByExercise: Record<string, ExerciseLast> // key = exercise name, lowercased
+}
+
+export async function getWorkoutBoard(): Promise<WorkoutBoard> {
+  const auth = await getAuthProfileId()
+  if (!auth) return { weekly: null, lastByExercise: {} }
+  const { userId, supabase } = auth
+
+  const [planRes, entriesRes] = await Promise.all([
+    supabase
+      .from('exercise_plans')
+      .select('plan')
+      .eq('user_id', userId)
+      .eq('active', true)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from('entries')
+      .select('extracted_json, created_at')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(150),
+  ])
+
+  const weekly = (planRes.data?.plan?.weekly as PlanDay[]) ?? null
+
+  // Entries are newest-first, so the FIRST time we see an exercise is its most
+  // recent occurrence — exactly the "last time I did this" we want.
+  const lastByExercise: Record<string, ExerciseLast> = {}
+  for (const e of entriesRes.data || []) {
+    const ex = (e.extracted_json as ExtractedJSON) || {}
+    const date = effectiveDate(ex, e.created_at)
+    for (const w of ex.workouts || []) {
+      if (!w.exercise) continue
+      const key = w.exercise.trim().toLowerCase()
+      if (lastByExercise[key]) continue
+      const sets: WorkoutSet[] =
+        w.set_log && w.set_log.length
+          ? w.set_log
+          : w.weight_kg != null || w.reps != null
+            ? [{ weight_kg: w.weight_kg, reps: w.reps, rpe_1_10: w.rpe_1_10 }]
+            : []
+      lastByExercise[key] = { exercise: w.exercise.trim(), date, sets }
+    }
+  }
+
+  return { weekly, lastByExercise }
 }
