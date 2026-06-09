@@ -1,79 +1,90 @@
 // Service Worker for Memory OS PWA
-const CACHE_NAME = 'memory-os-v1'
-const URLS_TO_CACHE = [
-  '/',
-  '/dashboard',
-  '/add',
-  '/timeline',
-  '/ask',
-  '/profile',
-]
+//
+// Deliberately minimal. The previous version intercepted EVERY GET (including
+// Supabase API calls and Next.js RSC payloads), re-fetched each one, and cached
+// it — which doubled every request, cached private user data, and slowed
+// navigation. This version only:
+//   • cache-first serves immutable static assets (/_next/static, icons)
+//   • network-first serves page navigations (with an offline cache fallback)
+//   • ignores everything else (API, cross-origin Supabase/Gemini, RSC, non-GET)
+//     by NOT calling respondWith — the browser handles them normally, with no
+//     duplicate SW request.
+const CACHE = 'memory-os-v2'
+const APP_SHELL = ['/dashboard', '/add', '/workout', '/timeline', '/ask', '/profile']
 
-// Install event
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(URLS_TO_CACHE).catch((err) => {
-        console.log('Cache add error:', err)
-      })
-    })
+    caches.open(CACHE).then((cache) => cache.addAll(APP_SHELL).catch(() => {})),
   )
   self.skipWaiting()
 })
 
-// Activate event
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME) {
-            return caches.delete(cacheName)
-          }
-        })
-      )
-    })
+    caches
+      .keys()
+      .then((names) => Promise.all(names.filter((n) => n !== CACHE).map((n) => caches.delete(n))))
+      .then(() => self.clients.claim()),
   )
-  self.clients.claim()
 })
 
-// Fetch event - Network first, fallback to cache
+function isStaticAsset(url) {
+  return (
+    url.pathname.startsWith('/_next/static') ||
+    url.pathname.startsWith('/icon-') ||
+    url.pathname.startsWith('/apple-touch-icon') ||
+    url.pathname === '/favicon.ico' ||
+    /\.(?:css|js|woff2?|png|jpg|jpeg|svg|gif|webp)$/.test(url.pathname)
+  )
+}
+
 self.addEventListener('fetch', (event) => {
-  if (event.request.method !== 'GET') {
+  const req = event.request
+  if (req.method !== 'GET') return
+
+  const url = new URL(req.url)
+
+  // Only ever touch our own origin — let Supabase, Gemini, analytics pass through.
+  if (url.origin !== self.location.origin) return
+  // Never intercept API routes or Next.js RSC/data fetches (keeps data fresh + private).
+  if (url.pathname.startsWith('/api/')) return
+  if (url.searchParams.has('_rsc')) return
+
+  // Static assets → cache-first (they're content-hashed / immutable).
+  if (isStaticAsset(url)) {
+    event.respondWith(
+      caches.match(req).then(
+        (cached) =>
+          cached ||
+          fetch(req).then((res) => {
+            if (res && res.status === 200) {
+              const copy = res.clone()
+              caches.open(CACHE).then((c) => c.put(req, copy))
+            }
+            return res
+          }),
+      ),
+    )
     return
   }
 
-  event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        if (!response || response.status !== 200 || response.type === 'error') {
-          return response
-        }
-
-        const responseToCache = response.clone()
-        caches.open(CACHE_NAME).then((cache) => {
-          cache.put(event.request, responseToCache)
+  // Page navigations → network-first, fall back to cached shell when offline.
+  if (req.mode === 'navigate') {
+    event.respondWith(
+      fetch(req)
+        .then((res) => {
+          const copy = res.clone()
+          caches.open(CACHE).then((c) => c.put(req, copy))
+          return res
         })
+        .catch(() => caches.match(req).then((c) => c || caches.match('/dashboard'))),
+    )
+    return
+  }
 
-        return response
-      })
-      .catch(() => {
-        return caches.match(event.request).then((response) => {
-          return (
-            response ||
-            new Response('Offline - content not available', {
-              status: 503,
-              statusText: 'Service Unavailable',
-            })
-          )
-        })
-      })
-  )
+  // Everything else: do nothing → browser handles it (no duplicate SW request).
 })
 
-// Handle messages from clients
 self.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'SKIP_WAITING') {
-    self.skipWaiting()
-  }
+  if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting()
 })
