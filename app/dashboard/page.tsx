@@ -80,22 +80,29 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (authLoading) return
+    if (!profileId) { setIsLoading(false); return }
+
     const load = async () => {
       setIsLoading(true)
       try {
-        if (!profileId) return
         const supabase = createClient()
+        const start = new Date()
+        start.setDate(start.getDate() - RANGE_DAYS[range])
+        const startDate = start.toISOString().split('T')[0]
 
-        // Profile → TDEE target
-        const { data: profile } = await supabase
-          .from('user_profile')
-          .select('*')
-          .eq('id', profileId)
-          .single()
+        // All five reads are independent — run them in parallel (one wait
+        // instead of five sequential round-trips) to cut load time.
+        const [profileRes, aggsRes, latestRes, reportRes, issuesRes] = await Promise.all([
+          supabase.from('user_profile').select('*').eq('id', profileId).single(),
+          supabase.from('daily_aggregates').select('*').eq('user_id', profileId).gte('log_date', startDate).order('log_date', { ascending: true }),
+          supabase.from('entries').select('extracted_json').eq('user_id', profileId).order('created_at', { ascending: false }).limit(1).maybeSingle(),
+          supabase.from('lab_results').select('test_name, test_date').eq('user_id', profileId).order('test_date', { ascending: false }).limit(1).maybeSingle(),
+          supabase.from('health_issues').select('*', { count: 'exact', head: true }).eq('user_id', profileId).neq('status', 'resolved'),
+        ])
 
+        const profile = profileRes.data
         const profileReady = !!(profile?.current_weight_kg && profile?.height_cm && profile?.gender)
         setNeedsProfile(!profileReady)
-
         if (profileReady) {
           const age =
             profile.dob && typeof profile.dob === 'string'
@@ -107,18 +114,8 @@ export default function DashboardPage() {
           }
         }
 
-        // Trend rows from daily_aggregates
-        const start = new Date()
-        start.setDate(start.getDate() - RANGE_DAYS[range])
-        const { data: aggs } = await supabase
-          .from('daily_aggregates')
-          .select('*')
-          .eq('user_id', profileId)
-          .gte('log_date', start.toISOString().split('T')[0])
-          .order('log_date', { ascending: true })
-
         setRows(
-          (aggs || []).map((a: any) => ({
+          (aggsRes.data || []).map((a: any) => ({
             date: new Date(a.log_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
             iso: a.log_date as string,
             calories: a.calories ?? undefined,
@@ -134,32 +131,10 @@ export default function DashboardPage() {
           }))
         )
 
-        // Latest entry → today snapshot (energy balance, etc.)
-        const { data: latestEntry } = await supabase
-          .from('entries')
-          .select('extracted_json')
-          .eq('user_id', profileId)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .single()
-        setLatest((latestEntry?.extracted_json as ExtractedJSON) ?? null)
-
-        // Health hub: latest report + count of unresolved issues
-        const { data: reportRow } = await supabase
-          .from('lab_results')
-          .select('test_name, test_date')
-          .eq('user_id', profileId)
-          .order('test_date', { ascending: false })
-          .limit(1)
-          .maybeSingle()
+        setLatest((latestRes.data?.extracted_json as ExtractedJSON) ?? null)
+        const reportRow = reportRes.data
         setLatestReport(reportRow ? { name: reportRow.test_name || 'Report', date: reportRow.test_date } : null)
-
-        const { count: issuesCount } = await supabase
-          .from('health_issues')
-          .select('*', { count: 'exact', head: true })
-          .eq('user_id', profileId)
-          .neq('status', 'resolved')
-        setActiveIssues(issuesCount ?? 0)
+        setActiveIssues(issuesRes.count ?? 0)
       } catch (e) {
         console.error('[v0] dashboard load error:', e)
       } finally {

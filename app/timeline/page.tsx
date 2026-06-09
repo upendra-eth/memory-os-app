@@ -21,32 +21,38 @@ export default function TimelinePage() {
   const [days, setDays] = useState<DayEntry[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [range, setRange] = useState<'7d' | '30d' | '90d'>('30d')
-  const { profileId } = useAuth()
+  const { profileId, isLoading: authLoading } = useAuth()
 
   useEffect(() => {
+    // Wait until auth has resolved. Without this, the first render fires with
+    // profileId still null → we'd flash the "No entries" empty state, then
+    // reload once the session arrives.
+    if (authLoading) return
+    if (!profileId) { setIsLoading(false); return }
+
     const loadTimeline = async () => {
       setIsLoading(true)
-      if (!profileId) { setIsLoading(false); return }
-
       try {
         const supabase = createClient()
         const numDays = range === '7d' ? 7 : range === '30d' ? 30 : 90
         const startDate = new Date()
         startDate.setDate(startDate.getDate() - numDays)
 
-        const { data: entries } = await supabase
-          .from('entries')
-          .select('created_at')
-          .eq('user_id', profileId)
-          .gte('created_at', startDate.toISOString())
-          .order('created_at', { ascending: false })
-
-        const { data: aggregates } = await supabase
-          .from('daily_aggregates')
-          .select('*')
-          .eq('user_id', profileId)
-          .gte('log_date', startDate.toISOString().split('T')[0])
-          .order('log_date', { ascending: false })
+        // Independent queries → run in parallel.
+        const [{ data: entries }, { data: aggregates }] = await Promise.all([
+          supabase
+            .from('entries')
+            .select('created_at')
+            .eq('user_id', profileId)
+            .gte('created_at', startDate.toISOString())
+            .order('created_at', { ascending: false }),
+          supabase
+            .from('daily_aggregates')
+            .select('*')
+            .eq('user_id', profileId)
+            .gte('log_date', startDate.toISOString().split('T')[0])
+            .order('log_date', { ascending: false }),
+        ])
 
         const timelineMap = new Map<string, DayEntry>()
 
@@ -79,7 +85,7 @@ export default function TimelinePage() {
     }
 
     loadTimeline()
-  }, [range, profileId])
+  }, [range, profileId, authLoading])
 
   const formatDate = (dateStr: string) => {
     const date = new Date(`${dateStr}T00:00:00`)
