@@ -21,13 +21,13 @@ export default function TimelinePage() {
   const [days, setDays] = useState<DayEntry[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [range, setRange] = useState<'7d' | '30d' | '90d'>('30d')
-  const { profileId, isLoading: authLoading } = useAuth()
+  const { profileId, isLoading: authLoading, profileLoading } = useAuth()
 
   useEffect(() => {
-    // Wait until auth has resolved. Without this, the first render fires with
-    // profileId still null → we'd flash the "No entries" empty state, then
-    // reload once the session arrives.
-    if (authLoading) return
+    // Wait until auth AND the profile lookup have resolved. Without this, the
+    // first render fires with profileId still null → we'd flash the "No entries"
+    // empty state, then reload once the profile arrives.
+    if (authLoading || profileLoading) return
     if (!profileId) { setIsLoading(false); return }
 
     const loadTimeline = async () => {
@@ -85,7 +85,7 @@ export default function TimelinePage() {
     }
 
     loadTimeline()
-  }, [range, profileId, authLoading])
+  }, [range, profileId, authLoading, profileLoading])
 
   const formatDate = (dateStr: string) => {
     const date = new Date(`${dateStr}T00:00:00`)

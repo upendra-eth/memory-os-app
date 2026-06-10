@@ -9,6 +9,8 @@ interface AuthContextType {
   user: User | null
   session: Session | null
   isLoading: boolean
+  /** True until the profile lookup has resolved (runs in the background after auth). */
+  profileLoading: boolean
   signOut: () => Promise<void>
   profileId: string | null
   userEmail: string | null
@@ -18,6 +20,7 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   session: null,
   isLoading: true,
+  profileLoading: true,
   signOut: async () => {},
   profileId: null,
   userEmail: null,
@@ -32,10 +35,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [profileId, setProfileId] = useState<string | null>(null)
+  const [profileLoading, setProfileLoading] = useState(true)
   const router = useRouter()
   const supabase = createClient()
 
   const fetchProfile = useCallback(async (authUserId: string) => {
+    setProfileLoading(true)
     const { data: profile } = await supabase
       .from('user_profile')
       .select('id')
@@ -43,6 +48,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .single()
 
     setProfileId(profile?.id ?? null)
+    setProfileLoading(false)
   }, [supabase])
 
   useEffect(() => {
@@ -51,28 +57,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { data: { session: currentSession } } = await supabase.auth.getSession()
       setSession(currentSession)
       setUser(currentSession?.user ?? null)
-
-      if (currentSession?.user) {
-        await fetchProfile(currentSession.user.id)
-      }
+      // Unblock the UI as soon as we know the session — don't wait on the
+      // profile lookup (a network round-trip that can hang on a cold DB and
+      // would otherwise leave the whole app stuck on a spinner).
       setIsLoading(false)
+      if (currentSession?.user) {
+        fetchProfile(currentSession.user.id)
+      } else {
+        setProfileLoading(false)
+      }
     }
 
     getSession()
 
     // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, newSession) => {
+      (_event, newSession) => {
         setSession(newSession)
         setUser(newSession?.user ?? null)
-
+        setIsLoading(false)
         if (newSession?.user) {
-          await fetchProfile(newSession.user.id)
+          fetchProfile(newSession.user.id)
         } else {
           setProfileId(null)
+          setProfileLoading(false)
         }
-
-        setIsLoading(false)
       }
     )
 
@@ -95,6 +104,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         user,
         session,
         isLoading,
+        profileLoading,
         signOut,
         profileId,
         userEmail: user?.email ?? null,

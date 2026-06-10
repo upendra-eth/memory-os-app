@@ -90,7 +90,7 @@ export function Navigation() {
             const Icon = item.icon
             const isActive = pathname === item.href
             return (
-              <Link key={item.href} href={item.href} className={itemClasses(isActive)}>
+              <Link key={item.href} href={item.href} prefetch={false} className={itemClasses(isActive)}>
                 <Icon className="h-5 w-5" />
                 <span className="text-sm font-medium">{item.label}</span>
               </Link>
@@ -103,7 +103,7 @@ export function Navigation() {
           const Icon = item.icon
           const isActive = pathname === item.href
           return (
-            <Link key={item.href} href={item.href} className={cn('md:hidden', itemClasses(isActive))}>
+            <Link key={item.href} href={item.href} prefetch={false} className={cn('md:hidden', itemClasses(isActive))}>
               <Icon className="h-5 w-5" />
               <span className="text-[10px] font-medium">{item.label}</span>
             </Link>
@@ -139,6 +139,7 @@ export function Navigation() {
                   <SheetClose asChild key={item.href}>
                     <Link
                       href={item.href}
+                      prefetch={false}
                       className={cn(
                         'flex flex-col items-center gap-1.5 rounded-xl border p-4 transition-colors',
                         isActive

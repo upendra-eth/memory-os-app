@@ -68,7 +68,7 @@ interface DayRow {
 const RANGE_DAYS: Record<Range, number> = { '7d': 7, '30d': 30, '90d': 90 }
 
 export default function DashboardPage() {
-  const { profileId, user, isLoading: authLoading } = useAuth()
+  const { profileId, user, isLoading: authLoading, profileLoading } = useAuth()
   const [range, setRange] = useState<Range>('7d')
   const [rows, setRows] = useState<DayRow[]>([])
   const [tdee, setTdee] = useState<number | null>(null)
@@ -79,7 +79,7 @@ export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    if (authLoading) return
+    if (authLoading || profileLoading) return
     if (!profileId) { setIsLoading(false); return }
 
     const load = async () => {
@@ -142,7 +142,7 @@ export default function DashboardPage() {
       }
     }
     load()
-  }, [range, profileId, authLoading])
+  }, [range, profileId, authLoading, profileLoading])
 
   const today = rows[rows.length - 1]
   const eb = latest?.energy_balance
@@ -160,7 +160,7 @@ export default function DashboardPage() {
   const totalWorkouts = rows.reduce((s, r) => s + (r.workouts || 0), 0)
   const daysLogged = rows.length
 
-  if (authLoading || isLoading) {
+  if (authLoading || profileLoading || isLoading) {
     return (
       <div className="flex flex-col md:flex-row min-h-screen">
         <Navigation />
