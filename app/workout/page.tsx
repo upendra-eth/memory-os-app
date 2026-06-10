@@ -28,14 +28,84 @@ function fmtSets(sets: WorkoutSet[]): string {
 
 const niceDate = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
 
-/** Match a planned exercise name to logged history (case-insensitive, then fuzzy). */
+// Common gym abbreviations → canonical words, so a plan's "Incline DB Curl"
+// matches a logged "Incline Dumbbell Curl" (the normalizer tends to expand
+// these). Applied token-by-token after punctuation is stripped.
+const EXERCISE_ABBREV: Record<string, string> = {
+  db: 'dumbbell',
+  bb: 'barbell',
+  kb: 'kettlebell',
+  ohp: 'overhead press',
+  rdl: 'romanian deadlift',
+  sldl: 'stiff leg deadlift',
+  bw: 'bodyweight',
+  cg: 'close grip',
+  wg: 'wide grip',
+}
+
+// Articles / filler that carry no matching signal.
+const EXERCISE_STOP = new Set(['the', 'a', 'and', 'with', 'to', 'of'])
+
+/** Lowercase, strip punctuation (-, /, _, …), collapse spaces, expand abbreviations. */
+function normExercise(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[/_\-,.()]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .map((w) => EXERCISE_ABBREV[w] || w)
+    .join(' ')
+}
+
+function exerciseTokens(s: string): Set<string> {
+  return new Set(normExercise(s).split(' ').filter((w) => w && !EXERCISE_STOP.has(w)))
+}
+
+/**
+ * Match a planned exercise name to logged history. Layers, strongest first:
+ *   1. exact match after normalization (handles DB↔Dumbbell, hyphens, etc.)
+ *   2. substring containment ("Lat Pulldown" ⊂ "Lat Pulldown / Pull-ups")
+ *   3. token-subset ("Pec Deck" ⊆ "Reverse Pec Deck") with ≥2 shared tokens
+ *   4. Jaccard overlap ≥ 0.6 as a last resort
+ * The 0.6 floor is deliberately conservative so e.g. "Incline DB Curl" never
+ * collapses onto "Hammer Curl" just because both contain "curl".
+ */
 function findLast(name: string, map: Record<string, ExerciseLast>): ExerciseLast | null {
-  const key = name.trim().toLowerCase()
-  if (map[key]) return map[key]
+  const target = normExercise(name)
+  const tTok = exerciseTokens(name)
+  let best: ExerciseLast | null = null
+  let bestScore = 0
+
   for (const k of Object.keys(map)) {
-    if (k.includes(key) || key.includes(k)) return map[k]
+    const cand = normExercise(k)
+    let score = 0
+
+    if (cand === target) {
+      score = 1
+    } else if (target && cand && (cand.includes(target) || target.includes(cand))) {
+      score = 0.9
+    } else {
+      const cTok = exerciseTokens(k)
+      const shared = [...tTok].filter((t) => cTok.has(t)).length
+      const smaller = Math.min(tTok.size, cTok.size)
+      if (smaller >= 2 && shared === smaller) {
+        score = 0.85
+      } else {
+        const union = new Set([...tTok, ...cTok]).size
+        const jaccard = union ? shared / union : 0
+        if (jaccard >= 0.6) score = jaccard
+      }
+    }
+
+    // Strongest match wins; ties break toward the most recent session.
+    if (score > bestScore || (score > 0 && score === bestScore && best && map[k].date > best.date)) {
+      bestScore = score
+      best = map[k]
+    }
   }
-  return null
+
+  return bestScore >= 0.6 ? best : null
 }
 
 export default function WorkoutPage() {

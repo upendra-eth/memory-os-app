@@ -52,8 +52,13 @@ export async function middleware(request: NextRequest) {
     return supabaseResponse
   }
 
-  // If user is not authenticated and trying to access protected route
-  if (!user && !isAuthRoute) {
+  // If user is not authenticated and trying to access a protected route.
+  // API routes are EXCLUDED: they authenticate themselves (cookie session for
+  // /api/ask & /api/chat → 401; Bearer token via withMcpAuth for /api/mcp).
+  // Redirecting them to the HTML login page breaks every non-browser client —
+  // notably the MCP endpoint, which an external Claude can never reach if it's
+  // bounced to /auth/login.
+  if (!user && !isAuthRoute && !isApiRoute) {
     const url = request.nextUrl.clone()
     url.pathname = '/auth/login'
     url.searchParams.set('redirectTo', request.nextUrl.pathname)

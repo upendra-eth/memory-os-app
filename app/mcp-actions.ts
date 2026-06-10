@@ -52,7 +52,12 @@ export async function createMcpToken(label?: string): Promise<{ success: boolean
   })
   if (error) {
     console.error('[v0] createMcpToken error:', error.message)
-    return { success: false, error: 'Failed to create token.' }
+    // Surface the underlying reason — the most common one is that the
+    // `mcp_tokens` table was never created (run supabase/sql/mcp-tokens.sql).
+    const hint = /relation .*mcp_tokens.* does not exist|could not find the table/i.test(error.message)
+      ? 'The mcp_tokens table is missing — run supabase/sql/mcp-tokens.sql in the Supabase SQL editor.'
+      : error.message
+    return { success: false, error: `Failed to create token: ${hint}` }
   }
   return { success: true, token }
 }
