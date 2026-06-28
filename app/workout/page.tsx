@@ -11,6 +11,7 @@ import { useAuth } from '@/components/auth-provider'
 import { getWorkoutBoard, type WorkoutBoard, type ExerciseLast } from '@/app/training-actions'
 import type { WorkoutSet } from '@/lib/extraction-schema'
 import { PlanSetup } from '@/components/plan-setup'
+import { WorkoutLogEditor } from '@/components/workout-log-editor'
 import { Dumbbell, Copy, Check, CalendarClock, Pencil, X } from 'lucide-react'
 
 function fmtSets(sets: WorkoutSet[]): string {
@@ -24,6 +25,16 @@ function fmtSets(sets: WorkoutSet[]): string {
       return `${w}${a}${r}${rpe}`
     })
     .join(', ')
+}
+
+/** Display string for a logged record — falls back to sets-count/duration for
+ *  time-based or bodyweight moves (planks, holds) that carry no load/reps. */
+function fmtLast(last: ExerciseLast): string {
+  if (last.sets.length) return fmtSets(last.sets)
+  const parts: string[] = []
+  if (last.setsCount) parts.push(`${last.setsCount} set${last.setsCount > 1 ? 's' : ''}`)
+  if (last.durationMin) parts.push(`${last.durationMin} min`)
+  return parts.join(' × ')
 }
 
 const niceDate = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
@@ -46,7 +57,13 @@ const EXERCISE_ABBREV: Record<string, string> = {
 // Articles / filler that carry no matching signal.
 const EXERCISE_STOP = new Set(['the', 'a', 'and', 'with', 'to', 'of'])
 
-/** Lowercase, strip punctuation (-, /, _, …), collapse spaces, expand abbreviations. */
+/** Drop a trailing plural "s" so "Face Pulls" ≡ "Face Pull", "Squats" ≡ "Squat".
+ *  Skips short words and "-ss" endings ("press", "cross") which aren't plurals. */
+function singular(w: string): string {
+  return w.length > 3 && w.endsWith('s') && !w.endsWith('ss') ? w.slice(0, -1) : w
+}
+
+/** Lowercase, strip punctuation (-, /, _, …), collapse spaces, expand abbreviations, de-pluralize. */
 function normExercise(s: string): string {
   return s
     .toLowerCase()
@@ -54,7 +71,8 @@ function normExercise(s: string): string {
     .replace(/\s+/g, ' ')
     .trim()
     .split(' ')
-    .map((w) => EXERCISE_ABBREV[w] || w)
+    .flatMap((w) => (EXERCISE_ABBREV[w] || w).split(' ')) // expand multi-word abbreviations into tokens
+    .map(singular)
     .join(' ')
 }
 
@@ -62,50 +80,58 @@ function exerciseTokens(s: string): Set<string> {
   return new Set(normExercise(s).split(' ').filter((w) => w && !EXERCISE_STOP.has(w)))
 }
 
-/**
- * Match a planned exercise name to logged history. Layers, strongest first:
- *   1. exact match after normalization (handles DB↔Dumbbell, hyphens, etc.)
+/** Similarity of a planned name to a logged name. Layers, strongest first:
+ *   1. exact match after normalization (handles DB↔Dumbbell, plurals, hyphens)
  *   2. substring containment ("Lat Pulldown" ⊂ "Lat Pulldown / Pull-ups")
  *   3. token-subset ("Pec Deck" ⊆ "Reverse Pec Deck") with ≥2 shared tokens
  *   4. Jaccard overlap ≥ 0.6 as a last resort
- * The 0.6 floor is deliberately conservative so e.g. "Incline DB Curl" never
- * collapses onto "Hammer Curl" just because both contain "curl".
+ * The 0.6 floor keeps "Incline DB Curl" from collapsing onto "Hammer Curl". */
+function matchScore(target: string, tTok: Set<string>, candName: string): number {
+  const cand = normExercise(candName)
+  if (cand === target) return 1
+  if (target && cand && (cand.includes(target) || target.includes(cand))) return 0.9
+  const cTok = exerciseTokens(candName)
+  const shared = [...tTok].filter((t) => cTok.has(t)).length
+  const smaller = Math.min(tTok.size, cTok.size)
+  if (smaller >= 2 && shared === smaller) return 0.85
+  const union = new Set([...tTok, ...cTok]).size
+  const jaccard = union ? shared / union : 0
+  return jaccard >= 0.6 ? jaccard : 0
+}
+
+/**
+ * The most recent `n` distinct-day sessions of a planned exercise. Merges name
+ * variants ("Face Pull" / "Face Pulls" / "face pull") by only pulling from the
+ * keys that tie for the BEST score — so a recent variant always wins over a
+ * stale exact-name match, but a weaker 0.6 match never overrides a true 1.0 one.
  */
-function findLast(name: string, map: Record<string, ExerciseLast>): ExerciseLast | null {
+function findRecent(name: string, map: Record<string, ExerciseLast[]>, n = 2): ExerciseLast[] {
   const target = normExercise(name)
   const tTok = exerciseTokens(name)
-  let best: ExerciseLast | null = null
+
   let bestScore = 0
+  const scored = Object.keys(map).map((k) => {
+    const score = matchScore(target, tTok, k)
+    if (score > bestScore) bestScore = score
+    return { k, score }
+  })
+  if (bestScore < 0.6) return []
 
-  for (const k of Object.keys(map)) {
-    const cand = normExercise(k)
-    let score = 0
+  // Every session from the top-scoring variants, newest first, one per day.
+  const sessions = scored
+    .filter((s) => s.score >= bestScore - 1e-9)
+    .flatMap((s) => map[s.k])
+    .sort((a, b) => (a.date < b.date ? 1 : -1))
 
-    if (cand === target) {
-      score = 1
-    } else if (target && cand && (cand.includes(target) || target.includes(cand))) {
-      score = 0.9
-    } else {
-      const cTok = exerciseTokens(k)
-      const shared = [...tTok].filter((t) => cTok.has(t)).length
-      const smaller = Math.min(tTok.size, cTok.size)
-      if (smaller >= 2 && shared === smaller) {
-        score = 0.85
-      } else {
-        const union = new Set([...tTok, ...cTok]).size
-        const jaccard = union ? shared / union : 0
-        if (jaccard >= 0.6) score = jaccard
-      }
-    }
-
-    // Strongest match wins; ties break toward the most recent session.
-    if (score > bestScore || (score > 0 && score === bestScore && best && map[k].date > best.date)) {
-      bestScore = score
-      best = map[k]
-    }
+  const out: ExerciseLast[] = []
+  const seenDates = new Set<string>()
+  for (const s of sessions) {
+    if (seenDates.has(s.date)) continue
+    seenDates.add(s.date)
+    out.push(s)
+    if (out.length >= n) break
   }
-
-  return bestScore >= 0.6 ? best : null
+  return out
 }
 
 export default function WorkoutPage() {
@@ -145,15 +171,26 @@ export default function WorkoutPage() {
     setLoading(false)
   }
 
+  // Refresh just the logged-history data after a manual add/edit, without
+  // resetting which day the user is currently looking at.
+  const reloadBoardKeepDay = async () => {
+    const b = await getWorkoutBoard()
+    setBoard(b)
+  }
+
   const day = useMemo(() => board?.weekly?.find((d) => d.day === selected) || null, [board, selected])
   const todayName = new Date().toLocaleDateString('en-US', { weekday: 'long' })
 
   const copyDay = async () => {
     if (!day || !board) return
-    const lines = [`${day.day} · ${day.focus} — last progression`]
+    const lines = [`${day.day} · ${day.focus} — last 2 sessions (newest first)`]
     for (const ex of day.exercises || []) {
-      const last = findLast(ex.name, board.lastByExercise)
-      lines.push(`${ex.name}: ${last && last.sets.length ? `${fmtSets(last.sets)} (${niceDate(last.date)})` : '— no history yet'}`)
+      const recent = findRecent(ex.name, board.lastByExercise)
+      if (!recent.length) {
+        lines.push(`${ex.name}: — no history yet`)
+      } else {
+        lines.push(`${ex.name}: ${recent.map((s) => `${fmtLast(s)} (${niceDate(s.date)})`).join('  ←  ')}`)
+      }
     }
     try {
       await navigator.clipboard.writeText(lines.join('\n'))
@@ -251,22 +288,27 @@ export default function WorkoutPage() {
                   ) : (
                     <div className="divide-y divide-border">
                       {day.exercises.map((ex, i) => {
-                        const last = board && findLast(ex.name, board.lastByExercise)
+                        const recent = board ? findRecent(ex.name, board.lastByExercise) : []
                         return (
                           <div key={i} className="py-3">
                             <div className="flex items-baseline justify-between gap-3">
                               <span className="font-medium">{ex.name}</span>
                               <span className="text-xs text-muted-foreground whitespace-nowrap">target {ex.sets}×{ex.reps}</span>
                             </div>
-                            {last && last.sets.length ? (
-                              <div className="mt-1 flex items-center gap-2 text-sm">
-                                <CalendarClock className="h-3.5 w-3.5 text-primary flex-shrink-0" />
-                                <span className="font-medium text-foreground">{fmtSets(last.sets)}</span>
-                                <span className="text-xs text-muted-foreground">· last on {niceDate(last.date)}</span>
+                            {recent.length ? (
+                              <div className="mt-1 space-y-1">
+                                {recent.map((s, idx) => (
+                                  <div key={idx} className={`flex items-center gap-2 text-sm ${idx === 0 ? '' : 'opacity-60'}`}>
+                                    <CalendarClock className={`h-3.5 w-3.5 flex-shrink-0 ${idx === 0 ? 'text-primary' : 'text-muted-foreground'}`} />
+                                    <span className={idx === 0 ? 'font-medium text-foreground' : 'text-muted-foreground'}>{fmtLast(s)}</span>
+                                    <span className="text-xs text-muted-foreground whitespace-nowrap">· {idx === 0 ? 'last' : 'prev'} on {niceDate(s.date)}</span>
+                                  </div>
+                                ))}
                               </div>
                             ) : (
                               <p className="mt-1 text-xs text-muted-foreground">No history yet — log it today to start tracking.</p>
                             )}
+                            <WorkoutLogEditor exerciseName={ex.name} existing={recent[0] ?? null} onSaved={reloadBoardKeepDay} />
                           </div>
                         )
                       })}

@@ -195,11 +195,18 @@ export interface ExerciseLast {
   exercise: string
   date: string
   sets: WorkoutSet[]
+  /** Summary set count when no per-set log was captured (e.g. "3 sets"). */
+  setsCount?: number
+  /** Time-based moves (planks, holds, carries) log duration instead of load. */
+  durationMin?: number
 }
 
 export interface WorkoutBoard {
   weekly: PlanDay[] | null
-  lastByExercise: Record<string, ExerciseLast> // key = exercise name, lowercased
+  // key = exercise name (lowercased). Value = every logged session of that name,
+  // newest-first. The /workout page merges variant names ("Face Pull" /
+  // "Face Pulls") at match time and surfaces the most recent sessions.
+  lastByExercise: Record<string, ExerciseLast[]>
 }
 
 export async function getWorkoutBoard(): Promise<WorkoutBoard> {
@@ -226,25 +233,146 @@ export async function getWorkoutBoard(): Promise<WorkoutBoard> {
 
   const weekly = (planRes.data?.plan?.weekly as PlanDay[]) ?? null
 
-  // Entries are newest-first, so the FIRST time we see an exercise is its most
-  // recent occurrence — exactly the "last time I did this" we want.
-  const lastByExercise: Record<string, ExerciseLast> = {}
+  // Entries are newest-first, so each name's list comes out newest-first too.
+  // We keep ALL sessions (not just the latest) so the UI can show the last two
+  // workouts per exercise and the user sees their real progression.
+  const lastByExercise: Record<string, ExerciseLast[]> = {}
   for (const e of entriesRes.data || []) {
     const ex = (e.extracted_json as ExtractedJSON) || {}
     const date = effectiveDate(ex, e.created_at)
     for (const w of ex.workouts || []) {
       if (!w.exercise) continue
       const key = w.exercise.trim().toLowerCase()
-      if (lastByExercise[key]) continue
       const sets: WorkoutSet[] =
         w.set_log && w.set_log.length
           ? w.set_log
           : w.weight_kg != null || w.reps != null
             ? [{ weight_kg: w.weight_kg, reps: w.reps, rpe_1_10: w.rpe_1_10 }]
             : []
-      lastByExercise[key] = { exercise: w.exercise.trim(), date, sets }
+      ;(lastByExercise[key] ||= []).push({
+        exercise: w.exercise.trim(),
+        date,
+        sets,
+        setsCount: w.sets ?? undefined,
+        durationMin: w.duration_min ?? undefined,
+      })
     }
   }
 
   return { weekly, lastByExercise }
+}
+
+// ---------------------------------------------------------------------------
+// Manual workout entry — add a missing result, or correct one that was logged
+// wrong / mis-parsed. Writes straight into entries.extracted_json.workouts[]
+// so the board, day view and progress charts all pick it up immediately.
+// (daily_aggregates is nutrition/energy-focused and is not recomputed here.)
+// ---------------------------------------------------------------------------
+
+export interface ManualWorkoutInput {
+  exercise: string
+  /** Effective date (YYYY-MM-DD). For an edit, the date the record is on; for
+   *  an add, the day you did it (defaults to today on the client). */
+  date: string
+  sets?: number | null
+  reps?: number | null
+  weightKg?: number | null
+  durationMin?: number | null
+  rpe?: number | null
+}
+
+const cleanNum = (v: number | null | undefined): number | undefined =>
+  typeof v === 'number' && Number.isFinite(v) ? v : undefined
+
+export async function saveManualWorkout(
+  input: ManualWorkoutInput,
+): Promise<{ ok: boolean; error?: string }> {
+  const auth = await getAuthProfileId()
+  if (!auth) return { ok: false, error: 'Not signed in.' }
+  const { userId, supabase } = auth
+
+  const exercise = input.exercise.trim()
+  if (!exercise) return { ok: false, error: 'Exercise name is required.' }
+  const date = input.date?.slice(0, 10)
+  if (!date) return { ok: false, error: 'A date is required.' }
+
+  // Build the workout from whatever the user provided. A manual record carries
+  // only summary fields (no per-set log); the board reads weight/reps/duration
+  // directly so this renders fine for both strength and time-based moves.
+  const fields: Partial<Workout> = {
+    sets: cleanNum(input.sets),
+    reps: cleanNum(input.reps),
+    weight_kg: cleanNum(input.weightKg),
+    duration_min: cleanNum(input.durationMin),
+    rpe_1_10: cleanNum(input.rpe),
+  }
+  const hasAnyValue = Object.values(fields).some((v) => v !== undefined)
+  if (!hasAnyValue) return { ok: false, error: 'Enter at least one value (sets, reps, weight or duration).' }
+
+  // Pull recent entries and locate the one on the target date that already
+  // holds this exercise (an edit), else any entry on that date (append).
+  const { data: rows, error: readErr } = await supabase
+    .from('entries')
+    .select('id, extracted_json, created_at')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(200)
+  if (readErr) return { ok: false, error: 'Could not load your entries.' }
+
+  const onDate = (rows || []).filter(
+    (r: any) => effectiveDate(r.extracted_json as ExtractedJSON, r.created_at) === date,
+  )
+  const norm = (s: string) => s.trim().toLowerCase()
+
+  // Prefer the entry that already contains this exercise on that date.
+  const target: any = onDate.find((r: any) =>
+    ((r.extracted_json as ExtractedJSON)?.workouts || []).some((w) => w.exercise && norm(w.exercise) === norm(exercise)),
+  )
+
+  if (target) {
+    const ex = (target.extracted_json as ExtractedJSON) || {}
+    const workouts = (ex.workouts || []).map((w) =>
+      w.exercise && norm(w.exercise) === norm(exercise)
+        ? // Overwrite the summary fields the user edited; clear any stale
+          // per-set log so the corrected summary is what shows.
+          { ...w, exercise, ...fields, set_log: undefined }
+        : w,
+    )
+    const { error } = await supabase
+      .from('entries')
+      .update({ extracted_json: { ...ex, workouts }, updated_at: new Date().toISOString() })
+      .eq('id', target.id)
+    return error ? { ok: false, error: 'Save failed.' } : { ok: true }
+  }
+
+  const workout: Workout = { exercise, ...fields }
+
+  // No matching exercise — append to an existing entry on that date if there
+  // is one, otherwise create a fresh minimal entry for the date.
+  if (onDate.length) {
+    const row = onDate[0]
+    const ex = (row.extracted_json as ExtractedJSON) || {}
+    const { error } = await supabase
+      .from('entries')
+      .update({
+        extracted_json: { ...ex, workouts: [...(ex.workouts || []), workout] },
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', row.id)
+    return error ? { ok: false, error: 'Save failed.' } : { ok: true }
+  }
+
+  const text = `Manual workout: ${exercise}`
+  const { error } = await supabase.from('entries').insert({
+    user_id: userId,
+    raw_text: text,
+    normalized_text: text,
+    narrative_text: text,
+    extracted_json: { log_date: date, workouts: [workout] } as ExtractedJSON,
+    summary: text,
+    embedding: null,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  })
+  return error ? { ok: false, error: 'Save failed.' } : { ok: true }
 }
