@@ -40,6 +40,35 @@
   --sidebar-ring: oklch(0.65 0.18 175);
   --success: oklch(0.65 0.18 145);
   --success-foreground: oklch(0.99 0 0);
+
+  /* ---------------------------------------------------------------------
+   * Analytics viz palette (light steps).
+   * Categorical slots 1-6 in a FIXED order — the order is the colour-blind
+   * safety mechanism, not cosmetics. Validated (OKLab ΔE, CVD simulation,
+   * contrast) against the white card surface: all gates pass; slots 3/4/5
+   * sit under 3:1 contrast, which is why every analytics chart ships a
+   * legend + tooltip and the Data tab carries the full table view.
+   * Do not reorder or add a 7th hue — fold the tail into "Other" instead.
+   * ------------------------------------------------------------------- */
+  --viz-1: #2a78d6; /* blue    */
+  --viz-2: #eb6834; /* orange  */
+  --viz-3: #1baf7a; /* aqua    */
+  --viz-4: #eda100; /* yellow  */
+  --viz-5: #e87ba4; /* magenta */
+  --viz-6: #4a3aa7; /* violet  */
+  /* Diverging: warm/cool poles + neutral midpoint (deficit ↔ surplus) */
+  --viz-cool: #2a78d6;
+  --viz-warm: #e34948;
+  --viz-mid: #f0efec;
+  /* Status — reserved for good/warning/serious/critical, never for a series */
+  --viz-good: #008300;
+  --viz-warn: #eda100;
+  --viz-serious: #eb6834;
+  --viz-critical: #e34948;
+  /* Chrome: solid hairlines, one shade off the surface */
+  --viz-grid: oklch(0.91 0.01 200);
+  --viz-axis: oklch(0.45 0.02 240);
+  --viz-surface: oklch(1 0 0);
 }
 
 .dark {
@@ -78,6 +107,26 @@
   --sidebar-ring: oklch(0.70 0.18 175);
   --success: oklch(0.60 0.18 145);
   --success-foreground: oklch(0.10 0.02 240);
+
+  /* Analytics viz palette — dark steps. Same six hues, re-stepped for the
+   * dark card surface (not an automatic flip) and validated as a set:
+   * every gate passes here, including 3:1 contrast on all six. */
+  --viz-1: #3987e5;
+  --viz-2: #d95926;
+  --viz-3: #199e70;
+  --viz-4: #c98500;
+  --viz-5: #d55181;
+  --viz-6: #9085e9;
+  --viz-cool: #3987e5;
+  --viz-warm: #e66767;
+  --viz-mid: #383835;
+  --viz-good: #35b435;
+  --viz-warn: #c98500;
+  --viz-serious: #d95926;
+  --viz-critical: #e66767;
+  --viz-grid: oklch(0.26 0.02 240);
+  --viz-axis: oklch(0.65 0.02 200);
+  --viz-surface: oklch(0.16 0.02 240);
 }
 
 @theme inline {

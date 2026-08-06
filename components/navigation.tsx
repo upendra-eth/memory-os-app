@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/components/auth-provider'
-import { Brain, Plus, MessageSquare, Clock, User, Stethoscope, LogOut, Dumbbell, TrendingUp, Sparkles, MoreHorizontal, HeartPulse, Compass, Target, Plug, ShieldCheck, Activity } from 'lucide-react'
+import { Brain, Plus, MessageSquare, Clock, User, Stethoscope, LogOut, Dumbbell, TrendingUp, Sparkles, MoreHorizontal, HeartPulse, Compass, Target, Plug, ShieldCheck, Activity, BarChart3 } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { LogoTile } from '@/components/logo'
 import { amIAdmin } from '@/app/admin-actions'
@@ -20,6 +20,7 @@ import {
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: Brain },
+  { href: '/analytics', label: 'Analytics', icon: BarChart3 },
   { href: '/add', label: 'Add Entry', icon: Plus },
   { href: '/workout', label: 'Workout', icon: Dumbbell },
   { href: '/plan', label: 'Plan', icon: Target },
@@ -38,7 +39,7 @@ const navItems = [
 // On mobile the bottom bar only has room for a few items; show the most-used
 // ones inline and tuck the rest behind a "More" sheet (which also holds the
 // account / sign-out controls that the desktop sidebar shows at the bottom).
-const MOBILE_PRIMARY = ['/dashboard', '/workout', '/add', '/ask']
+const MOBILE_PRIMARY = ['/dashboard', '/analytics', '/add', '/workout', '/ask']
 
 export function Navigation() {
   const pathname = usePathname()
