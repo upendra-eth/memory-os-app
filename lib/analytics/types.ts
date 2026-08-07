@@ -7,6 +7,8 @@
  * server-action boundary and be handed straight to Recharts.
  */
 
+import type { ForecastBundle } from './forecast'
+
 export type RangeKey = '7d' | '14d' | '30d' | '60d' | '90d' | '180d' | '365d' | 'all' | 'custom'
 
 export const RANGE_LABELS: Record<RangeKey, string> = {
@@ -482,6 +484,8 @@ export interface AnalyticsPayload {
   range: { key: RangeKey; start: string; end: string; days: number; label: string }
   profile: AnalyticsProfile
   days: DayPoint[]
+  /** The equal-length window immediately before the range, for overlay comparisons. */
+  previousDays: DayPoint[]
   summary: PeriodSummary
   previous: PeriodSummary | null
   energy: EnergyAnalysis
@@ -496,6 +500,8 @@ export interface AnalyticsPayload {
   correlations: Correlation[]
   gaps: GapAnalysis
   coverage: CoverageStat[]
+  /** Forward projections + the written predictions. See lib/analytics/forecast.ts. */
+  forecast: ForecastBundle
   findings: Finding[]
   meta: {
     entryCount: number

@@ -56,88 +56,26 @@ import {
   type WeightAnalysis,
 } from './types'
 
-// ---------------------------------------------------------------------------
-// Small numeric helpers
-// ---------------------------------------------------------------------------
-
-const nums = (a: (number | null | undefined)[]): number[] =>
-  a.filter((v): v is number => typeof v === 'number' && Number.isFinite(v))
-
-const sum = (a: (number | null | undefined)[]): number => nums(a).reduce((s, v) => s + v, 0)
-
-const mean = (a: (number | null | undefined)[]): number | null => {
-  const v = nums(a)
-  return v.length ? v.reduce((s, x) => s + x, 0) / v.length : null
-}
-
-const round = (v: number | null, dp = 0): number | null => {
-  if (v === null || !Number.isFinite(v)) return null
-  const f = 10 ** dp
-  return Math.round(v * f) / f
-}
-
-const pct = (part: number, whole: number): number => (whole > 0 ? Math.round((part / whole) * 100) : 0)
-
-const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-
-const isoDate = (d: Date): string => d.toISOString().slice(0, 10)
-
-const addDays = (iso: string, n: number): string => {
-  const d = new Date(`${iso}T00:00:00.000Z`)
-  d.setUTCDate(d.getUTCDate() + n)
-  return isoDate(d)
-}
-
-const daysBetween = (a: string, b: string): number =>
-  Math.round((Date.parse(`${b}T00:00:00.000Z`) - Date.parse(`${a}T00:00:00.000Z`)) / 86400000)
-
-const shortLabel = (iso: string): string =>
-  new Date(`${iso}T00:00:00.000Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
-
-const weekdayOf = (iso: string): number => new Date(`${iso}T00:00:00.000Z`).getUTCDay()
-
-/** Monday-anchored week start for an ISO date. */
-const weekStartOf = (iso: string): string => {
-  const wd = weekdayOf(iso)
-  return addDays(iso, wd === 0 ? -6 : 1 - wd)
-}
-
-/** Least-squares fit of y over x. Returns null when the fit is undefined. */
-function linreg(xs: number[], ys: number[]): { slope: number; intercept: number } | null {
-  const n = xs.length
-  if (n < 2) return null
-  const mx = xs.reduce((s, v) => s + v, 0) / n
-  const my = ys.reduce((s, v) => s + v, 0) / n
-  let num = 0
-  let den = 0
-  for (let i = 0; i < n; i++) {
-    num += (xs[i] - mx) * (ys[i] - my)
-    den += (xs[i] - mx) ** 2
-  }
-  if (den === 0) return null
-  const slope = num / den
-  return { slope, intercept: my - slope * mx }
-}
-
-function pearson(xs: number[], ys: number[]): number {
-  const n = xs.length
-  const mx = xs.reduce((s, v) => s + v, 0) / n
-  const my = ys.reduce((s, v) => s + v, 0) / n
-  let num = 0
-  let dx = 0
-  let dy = 0
-  for (let i = 0; i < n; i++) {
-    const a = xs[i] - mx
-    const b = ys[i] - my
-    num += a * b
-    dx += a * a
-    dy += b * b
-  }
-  if (dx === 0 || dy === 0) return NaN
-  return num / Math.sqrt(dx * dy)
-}
-
-const epley1RM = (weightKg: number, reps: number): number => Math.round(weightKg * (1 + reps / 30))
+// Shared numeric + calendar helpers live in ./util so the forecast engine uses
+// exactly the same maths (and the same UTC date handling) as this one.
+import {
+  WEEKDAY_NAMES,
+  addDays,
+  daysBetween,
+  epley1RM,
+  isoDate,
+  linreg,
+  mean,
+  nums,
+  pct,
+  pearson,
+  round,
+  shortLabel,
+  sum,
+  weekStartOf,
+  weekdayOf,
+} from './util'
+import { computeForecast, leanShareOfChange } from './forecast'
 
 // ---------------------------------------------------------------------------
 // Name canonicalisation
@@ -605,10 +543,9 @@ function analyseEnergy(days: DayPoint[]): EnergyAnalysis {
 /**
  * Split an observed weight change into lean vs fat mass.
  *
- * This is an ESTIMATE from published partitioning ranges, not a measurement —
- * only a DEXA/BIA scan measures composition. The heuristic uses the three
- * levers that actually drive partitioning: rate of change, resistance-training
- * frequency, and protein intake. Confidence is never better than 'medium'.
+ * The partitioning heuristic itself lives in ./forecast (`leanShareOfChange`)
+ * so the retrospective estimate here and the forward projection there can never
+ * drift apart. An ESTIMATE from published ranges, not a measurement.
  */
 function estimateComposition(
   changeKg: number,
@@ -618,53 +555,20 @@ function estimateComposition(
   bodyWeightKg: number | null
 ): WeightAnalysis['composition'] {
   if (Math.abs(changeKg) < 0.3) return null
-  const trains = trainingPerWeek >= 3
-  const highProtein = (proteinPerKg ?? 0) >= 1.6
-  const okProtein = (proteinPerKg ?? 0) >= 1.2
-  const gaining = changeKg > 0
-
-  let leanShare: number
-  let reasoning: string
-
-  if (gaining) {
-    const fastGain = ratePerWeek > 0.5
-    if (trains && highProtein && !fastGain) {
-      leanShare = 0.4
-      reasoning = `Gaining slowly (${ratePerWeek.toFixed(2)} kg/wk) while lifting ${trainingPerWeek.toFixed(1)}×/wk on ${(proteinPerKg ?? 0).toFixed(1)} g/kg protein — the partitioning window where a real share of the gain is lean tissue.`
-    } else if (trains && okProtein) {
-      leanShare = 0.25
-      reasoning = fastGain
-        ? `Gaining fast (${ratePerWeek.toFixed(2)} kg/wk). Muscle can't be built at that speed — past roughly 0.5 kg/wk the extra is mostly fat.`
-        : `Training is there but protein (${(proteinPerKg ?? 0).toFixed(1)} g/kg) is under 1.6 g/kg, which caps how much of the gain can be lean.`
-    } else {
-      leanShare = 0.1
-      reasoning = trains
-        ? `Protein is too low to support lean gain, so almost all of this is fat.`
-        : `Only ${trainingPerWeek.toFixed(1)} resistance sessions a week. Without a training stimulus a surplus goes to fat.`
-    }
-  } else {
-    const fastLoss = bodyWeightKg ? Math.abs(ratePerWeek) > bodyWeightKg * 0.01 : Math.abs(ratePerWeek) > 0.9
-    if (trains && highProtein && !fastLoss) {
-      leanShare = 0.1
-      reasoning = `Losing at a controlled ${Math.abs(ratePerWeek).toFixed(2)} kg/wk with ${trainingPerWeek.toFixed(1)} sessions/wk and ${(proteinPerKg ?? 0).toFixed(1)} g/kg protein — conditions that protect muscle, so most of the loss is fat.`
-    } else if (trains || okProtein) {
-      leanShare = 0.25
-      reasoning = fastLoss
-        ? `Losing fast (${Math.abs(ratePerWeek).toFixed(2)} kg/wk). Above ~1% of bodyweight a week, lean mass starts going with the fat.`
-        : `Either training or protein is short of the muscle-sparing threshold, so some of the loss is lean tissue.`
-    } else {
-      leanShare = 0.35
-      reasoning = `Little resistance training and low protein while losing weight — a meaningful share of this is muscle, not fat.`
-    }
-  }
-
+  const { share: leanShare, reason } = leanShareOfChange({
+    changeKg,
+    ratePerWeek,
+    trainingPerWeek,
+    proteinPerKg,
+    bodyWeightKg,
+  })
   return {
     changeKg: round(changeKg, 2) as number,
     leanKg: round(changeKg * leanShare, 2) as number,
     fatKg: round(changeKg * (1 - leanShare), 2) as number,
     leanShare: Math.round(leanShare * 100),
     confidence: (proteinPerKg != null && trainingPerWeek > 0 ? 'medium' : 'low') as 'low' | 'medium',
-    reasoning,
+    reasoning: reason,
   }
 }
 
@@ -2114,6 +2018,16 @@ export function computeAnalytics(
   const correlations = analyseCorrelations(days)
   const gaps = analyseGaps(days, allLoggedDates)
   const coverage = analyseCoverage(days)
+  const forecast = computeForecast({
+    days,
+    summary,
+    weight,
+    energy,
+    dayType,
+    training,
+    correlations,
+    profile,
+  })
   const findings = diagnose(
     days,
     summary,
@@ -2134,6 +2048,7 @@ export function computeAnalytics(
     range: { key: rangeKey, start, end, days: rangeDays, label: rangeLabel },
     profile,
     days,
+    previousDays: prevDays,
     summary,
     previous,
     energy,
@@ -2148,6 +2063,7 @@ export function computeAnalytics(
     correlations,
     gaps,
     coverage,
+    forecast,
     findings,
     meta: {
       entryCount: entries.length,

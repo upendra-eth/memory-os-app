@@ -19,6 +19,8 @@ import { NutritionView } from '@/components/analytics/nutrition-view'
 import { TrainingView } from '@/components/analytics/training-view'
 import { RecoveryView } from '@/components/analytics/recovery-view'
 import { PatternsView } from '@/components/analytics/patterns-view'
+import { ForecastView } from '@/components/analytics/forecast-view'
+import { ExploreView } from '@/components/analytics/explore-view'
 import { DataView } from '@/components/analytics/data-view'
 import { BarChart3, CalendarRange, Plus, RefreshCw } from 'lucide-react'
 
@@ -27,12 +29,14 @@ const PRESETS: RangeKey[] = ['7d', '14d', '30d', '60d', '90d', '180d', '365d', '
 const TABS = [
   { value: 'overview', label: 'Overview' },
   { value: 'why', label: 'Why' },
+  { value: 'forecast', label: 'Forecast' },
   { value: 'energy', label: 'Energy' },
   { value: 'weight', label: 'Weight' },
   { value: 'nutrition', label: 'Diet' },
   { value: 'training', label: 'Training' },
   { value: 'recovery', label: 'Recovery' },
   { value: 'patterns', label: 'Patterns' },
+  { value: 'explore', label: 'Explore' },
   { value: 'data', label: 'Data' },
 ]
 
@@ -267,6 +271,9 @@ export default function AnalyticsPage() {
             <TabsContent value="why" className="mt-5 space-y-5">
               <DiagnosticsView data={data} />
             </TabsContent>
+            <TabsContent value="forecast" className="mt-5 space-y-5">
+              <ForecastView data={data} />
+            </TabsContent>
             <TabsContent value="energy" className="mt-5 space-y-5">
               <EnergyView data={data} />
             </TabsContent>
@@ -284,6 +291,9 @@ export default function AnalyticsPage() {
             </TabsContent>
             <TabsContent value="patterns" className="mt-5 space-y-5">
               <PatternsView data={data} />
+            </TabsContent>
+            <TabsContent value="explore" className="mt-5 space-y-5">
+              <ExploreView data={data} />
             </TabsContent>
             <TabsContent value="data" className="mt-5 space-y-5">
               <DataView data={data} />
