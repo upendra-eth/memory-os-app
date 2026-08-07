@@ -9,6 +9,7 @@
  * and an explicit estimate of how the change splits between lean and fat mass.
  */
 
+import { useRef } from 'react'
 import { Card } from '@/components/ui/card'
 import {
   Bar,
@@ -28,7 +29,6 @@ import {
 import type { AnalyticsPayload } from '@/lib/analytics/types'
 import {
   ChartCard,
-  DataTable,
   EmptyPanel,
   HeroStat,
   SectionHeading,
@@ -43,9 +43,28 @@ import {
 } from './chart-kit'
 import { Info } from 'lucide-react'
 import { QuickWeightLog } from './quick-weight-log'
+import { WeightLogManager, type WeightLogManagerHandle } from './weight-log-manager'
+
+/** A weigh-in dot that's actually clickable — jumps to that date in the manager below. Skips null placeholders and gives touch a bigger hit target than the 3.5px mark. */
+function ClickableWeighInDot(props: any) {
+  const { cx, cy, payload, onPick } = props
+  if (cx == null || cy == null || payload?.weight == null) return null
+  return (
+    <g style={{ cursor: 'pointer' }} onClick={() => onPick(payload.date)}>
+      <circle cx={cx} cy={cy} r={11} fill="transparent" />
+      <circle cx={cx} cy={cy} r={3.5} fill={VIZ.s1} stroke={VIZ.surface} strokeWidth={2} />
+    </g>
+  )
+}
 
 export function WeightView({ data, onLogged }: { data: AnalyticsPayload; onLogged: () => void }) {
   const { weight, summary, profile, monthly, weekly, days } = data
+  const managerRef = useRef<WeightLogManagerHandle>(null)
+  const pickDate = (date: string) => managerRef.current?.focusDate(date)
+  const handleChanged = () => {
+    managerRef.current?.refresh()
+    onLogged()
+  }
 
   if (weight.observations === 0) {
     return (
@@ -75,11 +94,6 @@ export function WeightView({ data, onLogged }: { data: AnalyticsPayload; onLogge
         },
       ]
     : []
-
-  const weighIns = days
-    .filter((d) => d.weightKg != null)
-    .map((d) => ({ date: d.date, label: d.label, weight: d.weightKg as number, trend: d.weightTrendKg }))
-    .reverse()
 
   return (
     <div className="space-y-5">
@@ -139,9 +153,9 @@ export function WeightView({ data, onLogged }: { data: AnalyticsPayload; onLogge
       {/* ---- The core chart ---- */}
       <ChartCard
         title="Measured weight, trend, and what your food log predicts"
-        subtitle="All three series are kilograms on one axis"
+        subtitle="All three series are kilograms on one axis — click any weigh-in dot to correct or delete it"
         height={320}
-        footnote="Where the dashed prediction and the solid trend separate, the food log and the maintenance figure disagree with your body. The body is right; the inputs need fixing."
+        footnote="Where the dashed prediction and the solid trend separate, the food log and the maintenance figure disagree with your body. The body is right; the inputs need fixing. Click a solid dot above to jump straight to that date below."
       >
         <LineChart data={weight.series} margin={{ top: 8, right: 12, left: -10, bottom: 0 }}>
           <CartesianGrid {...gridProps} />
@@ -177,7 +191,7 @@ export function WeightView({ data, onLogged }: { data: AnalyticsPayload; onLogge
             name="Weigh-in"
             stroke={VIZ.s1}
             strokeWidth={0}
-            dot={{ r: 3.5, fill: VIZ.s1, stroke: VIZ.surface, strokeWidth: 2 }}
+            dot={<ClickableWeighInDot onPick={pickDate} />}
             connectNulls={false}
             legendType="circle"
           />
@@ -329,18 +343,9 @@ export function WeightView({ data, onLogged }: { data: AnalyticsPayload; onLogge
         )}
       </div>
 
-      {/* ---- Table view ---- */}
-      <Card className="p-4">
-        <h3 className="mb-3 text-sm font-semibold">Every weigh-in</h3>
-        <DataTable
-          rows={weighIns}
-          columns={[
-            { key: 'date', header: 'Date', render: (r) => r.label },
-            { key: 'weight', header: 'Reading', align: 'right', render: (r) => `${r.weight.toFixed(1)} kg` },
-            { key: 'trend', header: '7-day trend', align: 'right', render: (r) => (r.trend != null ? `${r.trend.toFixed(2)} kg` : '—') },
-          ]}
-        />
-      </Card>
+      {/* ---- Manage every weigh-in: correct, delete, see what's superseded ---- */}
+      <SectionHeading title="Manage your weigh-ins" hint="Fix a wrong number, remove a duplicate, or see exactly what the charts are reading." />
+      <WeightLogManager ref={managerRef} onChanged={handleChanged} />
     </div>
   )
 }

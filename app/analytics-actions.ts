@@ -48,12 +48,14 @@ export async function getAnalytics(
     auth.supabase
       .from('entries')
       .select('extracted_json, created_at, updated_at')
-      // Backfilled entries for the same date all get the SAME created_at (noon
-      // UTC — see saveEntry), so two corrections for one day can tie on it.
-      // `updated_at` (the real save instant, always distinct) breaks the tie,
-      // so the entry actually saved most recently is reliably the one the
-      // engine treats as "latest" for that date.
-      .order('created_at', { ascending: true })
+      // Sorted by `updated_at` — the real save instant — NOT `created_at`.
+      // Backfilled entries all get created_at pinned to noon UTC of the date
+      // they're ABOUT (see saveEntry), which has nothing to do with when they
+      // were actually saved: a correction added today for a May date still
+      // gets created_at = that May date at noon, and can sort BEFORE a same-day
+      // entry that was genuinely logged live back then. Only updated_at
+      // reliably answers "which edit for this date happened most recently",
+      // which is what the engine's last-non-null-wins logic needs to be correct.
       .order('updated_at', { ascending: true }),
     auth.supabase
       .from('user_profile')
