@@ -300,7 +300,10 @@ function buildDays(
     }
 
     // A day can be logged in several pastes: sums accumulate, point-in-time
-    // states (weight, sleep, mood) take the first non-null seen.
+    // states (weight, sleep, day rating) take the LAST non-null seen — i.e. the
+    // most recently saved entry for the date — so adding a fresh entry to
+    // correct an earlier one actually overrides it. Mood is averaged instead
+    // since it's a list of separate emotions, not a single reading.
     let intake = 0
     let protein = 0
     let carbs = 0
@@ -364,9 +367,17 @@ function buildDays(
       }
 
       const b = ex.body
-      if (b?.weight_today_kg != null && day.weightKg === null) day.weightKg = b.weight_today_kg
-      if (b?.sleep_hours != null && day.sleepH === null) day.sleepH = b.sleep_hours
-      if (b?.sleep_quality_1_10 != null && day.sleepQuality === null) day.sleepQuality = b.sleep_quality_1_10
+      // Point-in-time fields: the LATEST entry for this date wins, not the
+      // first. `exs` is walked in ascending created_at order, so simply
+      // overwriting on every non-null sighting means a same-day correction
+      // (added after the original, to fix a wrong number) takes effect instead
+      // of being silently discarded by an earlier entry that got there first.
+      // This doesn't change the common multi-paste-per-day case: a later entry
+      // that doesn't mention weight/sleep at all (null) never clobbers an
+      // earlier one that did.
+      if (b?.weight_today_kg != null) day.weightKg = b.weight_today_kg
+      if (b?.sleep_hours != null) day.sleepH = b.sleep_hours
+      if (b?.sleep_quality_1_10 != null) day.sleepQuality = b.sleep_quality_1_10
       if (b?.hydration_l != null) day.hydrationL = (day.hydrationL ?? 0) + b.hydration_l
 
       const m = ex.mental
@@ -377,7 +388,7 @@ function buildDays(
 
       if (ex.emotions?.length)
         moods.push(ex.emotions.reduce((s, e) => s + e.intensity_1_10, 0) / ex.emotions.length)
-      if (ex.reflection?.rating_1_10 != null && day.dayRating === null) day.dayRating = ex.reflection.rating_1_10
+      if (ex.reflection?.rating_1_10 != null) day.dayRating = ex.reflection.rating_1_10
 
       for (const s of ex.symptoms ?? []) {
         day.symptomCount += 1

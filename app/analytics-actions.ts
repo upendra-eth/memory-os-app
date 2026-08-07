@@ -47,9 +47,14 @@ export async function getAnalytics(
   const [entriesRes, profileRes] = await Promise.all([
     auth.supabase
       .from('entries')
-      .select('extracted_json, created_at')
-      .eq('user_id', auth.userId)
-      .order('created_at', { ascending: true }),
+      .select('extracted_json, created_at, updated_at')
+      // Backfilled entries for the same date all get the SAME created_at (noon
+      // UTC — see saveEntry), so two corrections for one day can tie on it.
+      // `updated_at` (the real save instant, always distinct) breaks the tie,
+      // so the entry actually saved most recently is reliably the one the
+      // engine treats as "latest" for that date.
+      .order('created_at', { ascending: true })
+      .order('updated_at', { ascending: true }),
     auth.supabase
       .from('user_profile')
       .select(
