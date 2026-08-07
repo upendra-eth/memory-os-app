@@ -7,6 +7,7 @@ import type { ExtractedJSON } from '@/lib/extraction-schema'
 import { sanitizeExtractedJSON, isEmptyExtractedJSON } from '@/lib/extraction-schema'
 import { parseThreeSectionPaste } from '@/lib/parse-entry'
 import { enforceAiLimit } from '@/lib/rate-limit'
+import { entryNutrition, recomputeDailyAggregate, recordEntities } from '@/lib/entry-side-effects'
 
 const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY
 
@@ -298,18 +299,18 @@ export async function saveEntry(params: {
     // each block is isolated and only logs on error.
     if (extractedJson.entities) {
       try {
-        await processEntities(userId, extractedJson.entities, supabase)
+        await recordEntities(userId, extractedJson.entities, supabase)
       } catch (e) {
-        console.error('[entry-actions] processEntities failed (entry still saved):', e)
+        console.error('[v0] recordEntities failed (entry still saved):', e)
       }
     }
 
     try {
       // Recompute the WHOLE day from every entry on this date, so logging a day
       // in pieces (half now, rest later) sums correctly instead of overwriting.
-      await updateDailyAggregates(userId, effectiveDate, supabase)
+      await recomputeDailyAggregate(userId, effectiveDate, supabase)
     } catch (e) {
-      console.error('[entry-actions] updateDailyAggregates failed (entry still saved):', e)
+      console.error('[v0] recomputeDailyAggregate failed (entry still saved):', e)
     }
 
     return { success: true, entryId: entry.id, logDate: effectiveDate }
@@ -420,17 +421,21 @@ export async function getDayLogStatus(date: string): Promise<{
     (r: any) => ((r.extracted_json as ExtractedJSON)?.log_date || r.created_at.slice(0, 10)) === date
   )
 
-  const { data: agg } = await supabase
-    .from('daily_aggregates')
-    .select('calories, workouts_count')
-    .eq('user_id', userId)
-    .eq('log_date', date)
-    .maybeSingle()
+  // Computed from the day's entries we already have in hand rather than read
+  // back from daily_aggregates — one fewer round trip, and the hint stays
+  // correct even if the aggregate row for the day was never written.
+  let kcal = 0
+  let workouts = 0
+  for (const r of dayRows) {
+    const ex = (r.extracted_json as ExtractedJSON) || {}
+    kcal += entryNutrition(ex).kcal
+    workouts += (ex.workouts?.length || 0) + (ex.cardio?.length || 0)
+  }
 
   return {
     entryCount: dayRows.length,
-    kcal: agg?.calories ?? null,
-    workouts: agg?.workouts_count ?? null,
+    kcal: kcal > 0 ? Math.round(kcal) : null,
+    workouts: dayRows.length > 0 ? workouts : null,
     summaries: dayRows.map((r: any) => r.summary).filter(Boolean).slice(0, 3),
   }
 }
@@ -459,125 +464,4 @@ function generateSummary(extracted: ExtractedJSON): string {
   }
 
   return parts.join(' | ') || 'Entry logged'
-}
-
-/**
- * Process entities (people, foods, exercises, places)
- */
-async function processEntities(
-  userId: string,
-  entities: any,
-  supabase: any
-): Promise<void> {
-  const allEntities = [
-    ...(entities.people || []).map((e: string) => ({ name: e, type: 'person' })),
-    ...(entities.foods || []).map((e: string) => ({ name: e, type: 'food' })),
-    ...(entities.exercises || []).map((e: string) => ({ name: e, type: 'exercise' })),
-    ...(entities.places || []).map((e: string) => ({ name: e, type: 'place' })),
-  ]
-
-  for (const entity of allEntities) {
-    // Upsert entity
-    await supabase
-      .from('entities')
-      .upsert(
-        {
-          user_id: userId,
-          entity_type: entity.type,
-          entity_name: entity.name,
-          mention_count: 1,
-        },
-        {
-          onConflict: ['user_id', 'entity_type', 'entity_name'],
-        }
-      )
-  }
-}
-
-/** Calorie/macro contribution of a single entry (its own day-totals, else summed items). */
-function entryNutrition(ex: ExtractedJSON) {
-  const sumItems = (key: 'est_kcal' | 'protein_g' | 'carbs_g' | 'fat_g') =>
-    ex.nutrition?.reduce((s, n) => s + ((n as any)[key] || 0), 0) || 0
-  return {
-    kcal: ex.daily_totals?.kcal ?? ex.energy_balance?.intake_kcal ?? sumItems('est_kcal'),
-    protein: ex.daily_totals?.protein_g ?? sumItems('protein_g'),
-    carbs: ex.daily_totals?.carbs_g ?? sumItems('carbs_g'),
-    fat: ex.daily_totals?.fat_g ?? sumItems('fat_g'),
-  }
-}
-
-/**
- * Recompute a day's aggregate row from EVERY entry on that date.
- *
- * Called after each save with the entry's effective date. Because it rebuilds
- * from all same-day entries, logging a day in multiple pieces (half in the
- * morning, the rest at night) accumulates correctly instead of the last paste
- * clobbering the row. Idempotent: re-running yields the same totals.
- */
-async function updateDailyAggregates(userId: string, effectiveDate: string, supabase: any): Promise<void> {
-  try {
-    // Pull a ±1 day window by created_at, then match on the true effective date
-    // in JS (robust to the created_at/log_date timezone gap).
-    const from = new Date(effectiveDate + 'T00:00:00.000Z')
-    from.setUTCDate(from.getUTCDate() - 1)
-    const to = new Date(effectiveDate + 'T00:00:00.000Z')
-    to.setUTCDate(to.getUTCDate() + 2)
-
-    const { data: rows } = await supabase
-      .from('entries')
-      .select('extracted_json, created_at')
-      .eq('user_id', userId)
-      .gte('created_at', from.toISOString())
-      .lt('created_at', to.toISOString())
-
-    const dayEntries: ExtractedJSON[] = (rows || [])
-      .filter((r: any) => ((r.extracted_json as ExtractedJSON)?.log_date || r.created_at.slice(0, 10)) === effectiveDate)
-      .map((r: any) => (r.extracted_json as ExtractedJSON) || {})
-
-    if (dayEntries.length === 0) return
-
-    // Nutrition + training: SUM across the day's entries.
-    let kcal = 0, protein = 0, carbs = 0, fat = 0, workoutCount = 0, workoutMin = 0
-    // Point-in-time states: sleep once per day (take the max logged); mood/stress averaged.
-    let sleepH: number | null = null, sleepQ: number | null = null
-    const moods: number[] = []
-    const stresses: number[] = []
-
-    for (const ex of dayEntries) {
-      const n = entryNutrition(ex)
-      kcal += n.kcal; protein += n.protein; carbs += n.carbs; fat += n.fat
-      workoutCount += (ex.workouts?.length || 0) + (ex.cardio?.length || 0)
-      workoutMin +=
-        (ex.workouts?.reduce((s, w) => s + (w.duration_min || 0), 0) || 0) +
-        (ex.cardio?.reduce((s, c) => s + (c.duration_min || 0), 0) || 0)
-      if (ex.body?.sleep_hours != null) sleepH = Math.max(sleepH ?? 0, ex.body.sleep_hours)
-      if (ex.body?.sleep_quality_1_10 != null) sleepQ = Math.max(sleepQ ?? 0, ex.body.sleep_quality_1_10)
-      if (ex.emotions?.length)
-        moods.push(ex.emotions.reduce((s, e) => s + e.intensity_1_10, 0) / ex.emotions.length)
-      if (ex.mental?.stress_1_10 != null) stresses.push(ex.mental.stress_1_10)
-    }
-
-    const avg = (a: number[]) => (a.length ? Math.round(a.reduce((s, v) => s + v, 0) / a.length) : null)
-
-    const aggregateData = {
-      user_id: userId,
-      log_date: effectiveDate,
-      calories: kcal > 0 ? Math.round(kcal) : null,
-      protein_g: protein > 0 ? Math.round(protein) : null,
-      carbs_g: carbs > 0 ? Math.round(carbs) : null,
-      fat_g: fat > 0 ? Math.round(fat) : null,
-      sleep_hours: sleepH,
-      sleep_quality: sleepQ,
-      mood_score: avg(moods),
-      stress_level: avg(stresses),
-      workouts_count: workoutCount,
-      workout_duration_min: workoutMin > 0 ? Math.round(workoutMin) : null,
-    }
-
-    await supabase.from('daily_aggregates').upsert(aggregateData, {
-      onConflict: ['user_id', 'log_date'],
-    })
-  } catch (error) {
-    console.error('Update daily aggregates error:', error)
-  }
 }
