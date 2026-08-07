@@ -16,11 +16,12 @@ import type { AnalyticsPayload, DayPoint } from '@/lib/analytics/types'
 import { DataTable, MeterRow, SectionHeading, StatTile, VIZ } from './chart-kit'
 import { Download } from 'lucide-react'
 
-type Mode = 'all' | 'logged' | 'trained' | 'rest' | 'surplus'
+type Mode = 'all' | 'logged' | 'estimated' | 'trained' | 'rest' | 'surplus'
 
 const MODES: { key: Mode; label: string }[] = [
   { key: 'all', label: 'All days' },
   { key: 'logged', label: 'Logged only' },
+  { key: 'estimated', label: 'Estimated only' },
   { key: 'trained', label: 'Training days' },
   { key: 'rest', label: 'Rest days' },
   { key: 'surplus', label: 'Surplus days' },
@@ -32,6 +33,7 @@ export function DataView({ data }: { data: AnalyticsPayload }) {
   const rows = useMemo(() => {
     const filtered = data.days.filter((d) => {
       if (mode === 'logged') return d.logged
+      if (mode === 'estimated') return d.estimated
       if (mode === 'trained') return d.trained
       if (mode === 'rest') return !d.trained
       if (mode === 'surplus') return (d.balanceKcal ?? 0) > 0
@@ -44,6 +46,7 @@ export function DataView({ data }: { data: AnalyticsPayload }) {
     const cols: { key: keyof DayPoint; header: string }[] = [
       { key: 'date', header: 'date' },
       { key: 'logged', header: 'logged' },
+      { key: 'estimated', header: 'intake_estimated' },
       { key: 'intakeKcal', header: 'intake_kcal' },
       { key: 'maintenanceKcal', header: 'maintenance_kcal' },
       { key: 'balanceKcal', header: 'balance_kcal' },
@@ -89,6 +92,20 @@ export function DataView({ data }: { data: AnalyticsPayload }) {
 
   return (
     <div className="space-y-5">
+      {/* ---- How unlogged days are being handled ---- */}
+      <Card className="p-4">
+        <h3 className="text-sm font-semibold">Days with no entry</h3>
+        <p className="mt-1.5 text-sm text-muted-foreground leading-relaxed">{data.estimation.basis}</p>
+        {data.estimation.assumedDays > 0 && data.estimation.intakePerDayKcal != null && (
+          <p className="mt-2 text-xs text-muted-foreground leading-relaxed">
+            If the real intake on those days was 300 kcal a day off in either direction, the range&apos;s total energy
+            balance moves by {data.estimation.sensitivityKcal.toLocaleString()} kcal — about{' '}
+            {data.estimation.sensitivityKg} kg of body mass. Switch to &ldquo;Leave out&rdquo; at the top of the page
+            to see every number computed from logged days only.
+          </p>
+        )}
+      </Card>
+
       {/* ---- Coverage: what can and cannot be concluded ---- */}
       <SectionHeading
         title="How complete is your data?"
@@ -150,6 +167,20 @@ export function DataView({ data }: { data: AnalyticsPayload }) {
           maxHeight={560}
           columns={[
             { key: 'date', header: 'Date', render: (r) => <span className="font-medium">{r.date}</span> },
+            {
+              key: 'source',
+              header: 'Source',
+              render: (r) =>
+                r.estimated ? (
+                  <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
+                    estimated
+                  </span>
+                ) : r.logged ? (
+                  <span className="text-[10px] text-muted-foreground">logged</span>
+                ) : (
+                  <span className="text-[10px] text-muted-foreground">no entry</span>
+                ),
+            },
             { key: 'kcal', header: 'Intake', align: 'right', render: (r) => num(r.intakeKcal) },
             { key: 'maint', header: 'Maint.', align: 'right', render: (r) => num(r.maintenanceKcal) },
             {

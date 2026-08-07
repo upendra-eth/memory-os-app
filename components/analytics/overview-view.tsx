@@ -196,7 +196,7 @@ export function OverviewView({ data, onJump }: { data: AnalyticsPayload; onJump:
           title="Calories in vs your maintenance line"
           subtitle="Bars above the line are surplus days, below are deficit days"
           height={250}
-          footnote="Maintenance is your logged TDEE where available, otherwise Mifflin-St Jeor × your activity level. The 'real maintenance' number above is derived from your own weight trend instead."
+          footnote={`Maintenance is your logged TDEE where available, otherwise Mifflin-St Jeor × your activity level. The 'real maintenance' number above is derived from your own weight trend instead.${data.estimation.assumedDays > 0 ? ` Faded bars are the ${data.estimation.assumedDays} days with no entry, filled in at ${data.estimation.intakePerDayKcal?.toLocaleString()} kcal each.` : ''}`}
         >
           <ComposedChart data={energyRows} margin={{ top: 4, right: 8, left: -12, bottom: 0 }}>
             <CartesianGrid {...gridProps} />
@@ -204,7 +204,20 @@ export function OverviewView({ data, onJump }: { data: AnalyticsPayload; onJump:
             <YAxis {...axisProps} width={44} />
             <Tooltip content={<VizTooltip unit=" kcal" />} />
             <Legend wrapperStyle={{ fontSize: 11 }} iconType="circle" iconSize={8} />
-            <Bar dataKey="intake" name="Intake" fill={VIZ.s2} radius={[3, 3, 0, 0]} maxBarSize={26} />
+            {/* Logged solid, estimated faded — same slot, so the day total reads right. */}
+            <Bar dataKey="intakeLogged" stackId="intake" name="Logged intake" fill={VIZ.s2} radius={[3, 3, 0, 0]} maxBarSize={26} />
+            <Bar
+              dataKey="intakeEstimated"
+              stackId="intake"
+              name="Estimated (no entry)"
+              fill={VIZ.s2}
+              fillOpacity={0.28}
+              stroke={VIZ.s2}
+              strokeWidth={1}
+              strokeDasharray="2 2"
+              radius={[3, 3, 0, 0]}
+              maxBarSize={26}
+            />
             <Line
               type="monotone"
               dataKey="maintenance"
@@ -304,13 +317,17 @@ export function OverviewView({ data, onJump }: { data: AnalyticsPayload; onJump:
           title="Training days vs rest days"
           subtitle="Same units (kcal), so the two bars are honestly comparable"
           height={230}
-          footnote={
+          footnote={`${
             dayType.rest.daysWithFood < 3 || dayType.trained.daysWithFood < 3 || dayType.intakeDeltaKcal == null
-              ? `Averages here only count days with food logged — ${dayType.trained.daysWithFood} training and ${dayType.rest.daysWithFood} rest. Three of each are needed before the comparison means anything, and ${dayType.rest.days - dayType.rest.daysWithFood} of your rest days have no food recorded at all.`
+              ? `This needs three days with an intake figure on each side; you have ${dayType.trained.daysWithFood} training and ${dayType.rest.daysWithFood} rest.`
               : dayType.intakeDeltaKcal > -150
                 ? `You eat only ${Math.abs(dayType.intakeDeltaKcal)} kcal ${dayType.intakeDeltaKcal >= 0 ? 'more' : 'less'} on rest days than training days — while burning nothing extra. This is the single most common reason the scale climbs during a training block.`
                 : `You eat ${Math.abs(dayType.intakeDeltaKcal)} kcal less on rest days. That is the right instinct.`
-          }
+          }${
+            dayType.rest.daysEstimated > 0
+              ? ` ${dayType.rest.daysEstimated} of the ${dayType.rest.daysWithFood} rest days averaged here are estimated rather than logged, so this comparison is only as good as that assumption.`
+              : ''
+          }`}
         >
           <BarChart
             data={[

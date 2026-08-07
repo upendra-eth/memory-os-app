@@ -54,6 +54,10 @@ import {
   type WeekdayStat,
   type WeeklyPoint,
   type WeightAnalysis,
+  type AnalyticsOptions,
+  type EstimationInfo,
+  type UnloggedDayMode,
+  DEFAULT_ANALYTICS_OPTIONS,
 } from './types'
 
 // Shared numeric + calendar helpers live in ./util so the forecast engine uses
@@ -220,13 +224,19 @@ function workoutVolume(w: Workout): { sets: number; reps: number; volumeKg: numb
 /**
  * Build one row per calendar day between `start` and `end` inclusive — including
  * days with no entry, which are exactly the days the diagnostics care about.
+ *
+ * With `mode: 'assume-rest'` the unlogged days are then filled in as non-training
+ * days carrying an estimated intake, because that is what an unlogged day almost
+ * always is: a day the user didn't train and so didn't feel the need to record.
+ * Those days are marked `estimated` and never silently mixed with logged ones.
  */
 function buildDays(
   entries: RawEntry[],
   start: string,
   end: string,
-  fallbackMaintenance: number | null
-): DayPoint[] {
+  fallbackMaintenance: number | null,
+  mode: UnloggedDayMode = 'exclude'
+): { days: DayPoint[]; estimation: EstimationInfo } {
   const byDate = new Map<string, ExtractedJSON[]>()
   for (const e of entries) {
     const date = effectiveDate(e.extracted_json, e.created_at)
@@ -245,6 +255,7 @@ function buildDays(
       weekday: weekdayOf(d),
       logged: exs.length > 0,
       entries: exs.length,
+      estimated: false,
       intakeKcal: null,
       maintenanceKcal: fallbackMaintenance,
       burnKcal: null,
@@ -408,8 +419,79 @@ function buildDays(
     out.push(day)
   }
 
+  const estimation = fillUnloggedDays(out, mode)
   attachWeightTrend(out)
-  return out
+  return { days: out, estimation }
+}
+
+/** kcal a day either side, used to price how much the assumption is carrying. */
+const SENSITIVITY_KCAL = 300
+
+/**
+ * Fill days with no entry as estimated rest days.
+ *
+ * The estimate comes from the user's own logged days, preferring their logged
+ * REST days (the closest comparison) and falling back to all logged days when
+ * there are too few. Macros are deliberately left null — estimating protein
+ * would corrupt the g/kg figure that decides how much of a weight change is
+ * muscle, and that matters more than a complete-looking chart.
+ */
+function fillUnloggedDays(days: DayPoint[], mode: UnloggedDayMode): EstimationInfo {
+  const unlogged = days.filter((d) => !d.logged)
+  const base: EstimationInfo = {
+    mode,
+    assumedDays: 0,
+    intakePerDayKcal: null,
+    basis: '',
+    sensitivityKcal: 0,
+    sensitivityKg: 0,
+  }
+  if (mode !== 'assume-rest' || unlogged.length === 0) {
+    return {
+      ...base,
+      basis:
+        mode === 'assume-rest'
+          ? 'Every day in this range has an entry, so nothing needed estimating.'
+          : 'Days with no entry are excluded from all calorie and macro averages.',
+    }
+  }
+
+  const loggedRest = days.filter((d) => d.logged && !d.trained && d.intakeKcal != null)
+  const loggedAll = days.filter((d) => d.logged && d.intakeKcal != null)
+
+  let estimate: number | null = null
+  let basis: string
+  if (loggedRest.length >= 3) {
+    estimate = round(mean(loggedRest.map((d) => d.intakeKcal)))
+    basis = `the average of your ${loggedRest.length} logged rest days`
+  } else if (loggedAll.length >= 3) {
+    estimate = round(mean(loggedAll.map((d) => d.intakeKcal)))
+    basis = `the average of all ${loggedAll.length} days you logged food (you have only ${loggedRest.length} logged rest ${loggedRest.length === 1 ? 'day' : 'days'} to go on, which isn't enough for a rest-day-specific figure)`
+  } else {
+    return {
+      ...base,
+      assumedDays: unlogged.length,
+      basis: `${unlogged.length} days have no entry, and there are too few logged days (${loggedAll.length}) to estimate an intake for them. They count as rest days for training frequency, but contribute nothing to calorie averages.`,
+    }
+  }
+
+  for (const day of unlogged) {
+    day.estimated = true
+    day.trained = false
+    day.intakeKcal = estimate
+    day.balanceKcal =
+      estimate != null && day.maintenanceKcal != null ? Math.round(estimate - day.maintenanceKcal) : null
+  }
+
+  const sensitivityKcal = unlogged.length * SENSITIVITY_KCAL
+  return {
+    mode,
+    assumedDays: unlogged.length,
+    intakePerDayKcal: estimate,
+    basis: `${unlogged.length} of the ${days.length} days in this range have no entry. They are treated as rest days eating ${estimate?.toLocaleString()} kcal — ${basis}.`,
+    sensitivityKcal,
+    sensitivityKg: round(sensitivityKcal / KCAL_PER_KG, 2) as number,
+  }
 }
 
 /**
@@ -433,7 +515,8 @@ function attachWeightTrend(days: DayPoint[]): void {
 
 function summarise(days: DayPoint[], bodyWeightKg: number | null): PeriodSummary {
   const logged = days.filter((d) => d.logged)
-  const withFood = days.filter((d) => d.intakeKcal != null)
+  const withFood = days.filter((d) => d.intakeKcal != null && !d.estimated)
+  const estimatedDays = days.filter((d) => d.estimated)
   const trained = days.filter((d) => d.trained)
   const weights = days.filter((d) => d.weightKg != null)
   const avgProtein = mean(days.map((d) => d.proteinG))
@@ -443,6 +526,7 @@ function summarise(days: DayPoint[], bodyWeightKg: number | null): PeriodSummary
     days: days.length,
     daysLogged: logged.length,
     daysWithFood: withFood.length,
+    daysEstimated: estimatedDays.length,
     daysTrained: trained.length,
     trainingPerWeek: days.length ? round((trained.length / days.length) * 7, 1) : null,
     trainingPerWeekLogged: logged.length ? round((trained.length / logged.length) * 7, 1) : null,
@@ -505,6 +589,11 @@ function analyseEnergy(days: DayPoint[]): EnergyAnalysis {
       balance: d.balanceKcal,
       cumulative: sawAny ? Math.round(running) : null,
       trained: d.trained,
+      estimated: d.estimated,
+      // Split into two series so a chart can draw logged and estimated days in
+      // different fills without a second axis or a custom shape per bar.
+      intakeLogged: d.estimated ? null : d.intakeKcal,
+      intakeEstimated: d.estimated ? d.intakeKcal : null,
     }
   })
 
@@ -680,6 +769,7 @@ function dayTypeStat(days: DayPoint[], type: 'trained' | 'rest'): DayTypeStat {
     type,
     days: days.length,
     daysWithFood: withFood.length,
+    daysEstimated: withFood.filter((d) => d.estimated).length,
     avgIntake: round(mean(withFood.map((d) => d.intakeKcal))),
     avgMaintenance: round(mean(withFood.map((d) => d.maintenanceKcal))),
     avgBalance: round(mean(withFood.map((d) => d.balanceKcal))),
@@ -702,7 +792,7 @@ function analyseDayType(days: DayPoint[]): DayTypeAnalysis {
       rest.avgIntake != null && trained.avgIntake != null ? Math.round(rest.avgIntake - trained.avgIntake) : null,
     restSurplusKg: rest.surplusKcal > 0 ? round(rest.surplusKcal / KCAL_PER_KG, 2) : null,
     unloggedRestDays: restDays
-      .filter((d) => d.intakeKcal == null)
+      .filter((d) => !d.logged)
       .map((d) => ({ date: d.date, label: d.label })),
   }
 }
@@ -880,7 +970,9 @@ function analyseNutrition(
   const allFoods = Array.from(foods.entries()).map(([k, v]) => toStat(k, v))
 
   const calorieTargetKcal = profile.calorieTargetKcal
-  const intakes = nums(days.map((d) => d.intakeKcal))
+  // Logged days only: a bucket full of identical estimated days would read as a
+  // real habit, and "days over target" must count days you actually ate over it.
+  const intakes = nums(days.filter((d) => !d.estimated).map((d) => d.intakeKcal))
   const histogram = (() => {
     if (!intakes.length) return []
     const size = 250
@@ -1387,7 +1479,7 @@ function analyseCoverage(days: DayPoint[]): CoverageStat[] {
   const n = days.length || 1
   const count = (fn: (d: DayPoint) => boolean) => days.filter(fn).length
   const rows: { dimension: string; daysWithData: number; hint: string }[] = [
-    { dimension: 'Calories', daysWithData: count((d) => d.intakeKcal != null), hint: 'Needed for every energy-balance answer.' },
+    { dimension: 'Calories', daysWithData: count((d) => d.intakeKcal != null && !d.estimated), hint: 'Needed for every energy-balance answer.' },
     { dimension: 'Macros', daysWithData: count((d) => d.proteinG != null), hint: 'Protein drives how much of a change is muscle.' },
     { dimension: 'Body weight', daysWithData: count((d) => d.weightKg != null), hint: 'Weigh in most mornings — the trend is the truth serum.' },
     { dimension: 'Workouts', daysWithData: count((d) => d.trained), hint: 'Per-set logs power progression and volume.' },
@@ -1426,7 +1518,8 @@ function diagnose(
   training: TrainingAnalysis,
   recovery: RecoveryAnalysis,
   profile: AnalyticsProfile,
-  gaps: GapAnalysis
+  gaps: GapAnalysis,
+  estimation: EstimationInfo
 ): Finding[] {
   const f: Finding[] = []
   const push = (x: Finding) => f.push(x)
@@ -1528,8 +1621,45 @@ function diagnose(
     }
   }
 
-  // --- R4: rest days with no food logged at all ---------------------------
-  if (dayType.unloggedRestDays.length >= 2 && dayType.rest.days >= 3) {
+  // --- R4: how much of the answer rests on estimated days -----------------
+  // In assume-rest mode the unlogged days aren't a gap any more — they're
+  // modelled. That's a fair reading of how people log, but it has to be priced:
+  // the finding states the assumption and how far the conclusion moves if the
+  // real intake was 300 kcal either side of it.
+  if (estimation.mode === 'assume-rest' && estimation.assumedDays >= 3) {
+    const share = pct(estimation.assumedDays, summary.days)
+    const estimatedShareOfBalance =
+      summary.totalBalanceKcal != null && summary.totalBalanceKcal !== 0
+        ? Math.abs(estimation.sensitivityKcal / summary.totalBalanceKcal)
+        : null
+    push({
+      id: 'estimated-days',
+      severity: share >= 50 ? 'warning' : 'insight',
+      area: 'data',
+      title:
+        estimation.intakePerDayKcal != null
+          ? `${estimation.assumedDays} days are filled in at ${estimation.intakePerDayKcal.toLocaleString()} kcal`
+          : `${estimation.assumedDays} days have no entry to work from`,
+      detail:
+        estimation.intakePerDayKcal != null
+          ? `${estimation.basis} That is the right default — an unlogged day is almost always a day you did not train and so did not bother recording — but ${share}% of this range is a modelled number rather than a measured one. If your real intake on those days was 300 kcal a day higher or lower than assumed, the range's total energy balance moves by ${estimation.sensitivityKcal.toLocaleString()} kcal, or about ${estimation.sensitivityKg} kg of body mass${estimatedShareOfBalance != null && estimatedShareOfBalance > 0.5 ? ' — more than the entire balance the page is reporting' : ''}.`
+          : `${estimation.basis} Until there are at least three logged days to average, those days can only count as rest days for training frequency.`,
+      evidence: [
+        { label: 'Days estimated', value: `${estimation.assumedDays} of ${summary.days}` },
+        ...(estimation.intakePerDayKcal != null
+          ? [
+              { label: 'Assumed intake', value: `${estimation.intakePerDayKcal.toLocaleString()} kcal` },
+              { label: '±300 kcal/day swings', value: `${estimation.sensitivityKg} kg` },
+            ]
+          : []),
+      ],
+      action:
+        'Log the rest days too, even as one rough line ("no gym, roughly 2,500 kcal"). Each one you record replaces an assumption with a fact, and the numbers on this page tighten immediately.',
+    })
+  }
+
+  // --- R4b: strict mode — unlogged rest days are a genuine blind spot ------
+  if (estimation.mode === 'exclude' && dayType.unloggedRestDays.length >= 2 && dayType.rest.days >= 3) {
     const share = pct(dayType.unloggedRestDays.length, dayType.rest.days)
     if (share >= 30) {
       push({
@@ -1537,13 +1667,14 @@ function diagnose(
         severity: 'serious',
         area: 'data',
         title: `${dayType.unloggedRestDays.length} of your ${dayType.rest.days} rest days have no food logged`,
-        detail: `You log reliably on days you train — those feel like "on" days. But ${share}% of your rest days have no calories at all, and rest days are exactly where a surplus hides: no training, relaxed eating, nothing recorded. Any calorie average you see here is biased toward your good days.`,
+        detail: `You log reliably on days you train — those feel like "on" days. But ${share}% of your rest days have no calories at all, and rest days are exactly where a surplus hides: no training, relaxed eating, nothing recorded. With unlogged days set to be excluded, every calorie average here is biased toward your good days.`,
         evidence: [
           { label: 'Unlogged rest days', value: `${dayType.unloggedRestDays.length}` },
           { label: 'Share of rest days', value: `${share}%` },
           { label: 'Most recent', value: dayType.unloggedRestDays.slice(-3).map((d) => d.label).join(', ') },
         ],
-        action: 'On any day you do not train, still log your food — even a rough one-line estimate. A rest day without calories is the single biggest blind spot in your data.',
+        action:
+          'Either log those days, or switch "unlogged days" at the top of the page to "treat as rest days" so they are filled with an estimate instead of ignored.',
       })
     }
   }
@@ -1803,7 +1934,10 @@ function diagnose(
   }
 
   // --- R17: logging consistency ------------------------------------------
-  if (gaps.loggingRate < 70 && summary.days >= 14) {
+  // Only a finding in strict mode. Under assume-rest the same fact is already
+  // covered by R4 with its sensitivity priced in, and repeating it as a scolding
+  // would double-count one problem.
+  if (estimation.mode === 'exclude' && gaps.loggingRate < 70 && summary.days >= 14) {
     push({
       id: 'logging-gaps',
       severity: gaps.loggingRate < 45 ? 'serious' : 'warning',
@@ -1816,6 +1950,28 @@ function diagnose(
         { label: 'Current streak', value: `${gaps.currentStreak} day${gaps.currentStreak === 1 ? '' : 's'}` },
       ],
       action: 'A one-line entry beats a missing day. Log the day even when it went badly — those are the days with the answers in them.',
+    })
+  }
+
+  // --- R17b: the profile and the last weigh-in disagree -------------------
+  // Two sources of "current weight" exist and the fresher one wins for BMI and
+  // protein-per-kg, but the trend line can only use dated weigh-ins. When they
+  // differ materially, say so — otherwise the Weight tab appears to contradict
+  // the number in the header.
+  if (profile.weightKg != null && weight.lastKg != null && Math.abs(profile.weightKg - weight.lastKg) >= 1) {
+    const gap = profile.weightKg - weight.lastKg
+    push({
+      id: 'profile-vs-weighin',
+      severity: 'warning',
+      area: 'weight',
+      title: `Your profile says ${profile.weightKg} kg but your last logged weigh-in was ${weight.lastKg} kg`,
+      detail: `That is a ${Math.abs(gap).toFixed(1)} kg difference. The profile figure is the fresher one, so it drives your BMI, calorie target and protein-per-kg — but the weight trend and every projection can only use dated weigh-ins, and those still end at ${weight.lastKg} kg. Until the new weight is logged in an entry, the trend is reading old data.`,
+      evidence: [
+        { label: 'Profile', value: `${profile.weightKg} kg` },
+        { label: 'Last weigh-in', value: `${weight.lastKg} kg` },
+        { label: 'Difference', value: `${gap > 0 ? '+' : ''}${gap.toFixed(1)} kg` },
+      ],
+      action: `Mention "weight ${profile.weightKg} kg" in your next daily entry. That puts a dated point on the trend line and the projections update on the spot.`,
     })
   }
 
@@ -1888,6 +2044,8 @@ function diagnose(
 
 interface RawProfile {
   current_weight_kg?: number | null
+  /** When the profile row was last written — used to age-compare against weigh-ins. */
+  updated_at?: string | null
   target_weight_kg?: number | null
   height_cm?: number | null
   gender?: string | null
@@ -1898,10 +2056,21 @@ interface RawProfile {
   fitness_goal?: string | null
 }
 
-export function buildProfile(raw: RawProfile | null, latestWeightKg: number | null): AnalyticsProfile {
+export function buildProfile(
+  raw: RawProfile | null,
+  latestWeightKg: number | null,
+  latestWeightDate: string | null = null
+): AnalyticsProfile {
   const missing: string[] = []
-  // A weight logged in an entry is fresher than the profile field.
-  const weightKg = latestWeightKg ?? raw?.current_weight_kg ?? null
+  // Current weight = whichever source is FRESHER. A weigh-in inside an entry is
+  // dated, and the profile row carries `updated_at`, so the two are comparable:
+  // updating your weight on the profile page should take effect immediately, and
+  // a weigh-in logged since then should override it in turn.
+  const profileWeightDate = raw?.updated_at ? raw.updated_at.slice(0, 10) : null
+  const entryWeightIsFresher =
+    latestWeightKg != null &&
+    (profileWeightDate == null || latestWeightDate == null || latestWeightDate >= profileWeightDate)
+  const weightKg = entryWeightIsFresher ? latestWeightKg : (raw?.current_weight_kg ?? latestWeightKg ?? null)
   const heightCm = raw?.height_cm ?? null
   const gender = raw?.gender ?? null
   const age =
@@ -1979,7 +2148,8 @@ export function computeAnalytics(
   rawProfile: RawProfile | null,
   rangeKey: RangeKey,
   rangeLabel: string,
-  custom?: { start?: string; end?: string }
+  custom?: { start?: string; end?: string },
+  options: AnalyticsOptions = DEFAULT_ANALYTICS_OPTIONS
 ): AnalyticsPayload {
   const allLoggedDates = Array.from(
     new Set(entries.map((e) => effectiveDate(e.extracted_json, e.created_at)))
@@ -1987,23 +2157,27 @@ export function computeAnalytics(
 
   const { start, end, days: rangeDays } = resolveRange(rangeKey, allLoggedDates, custom)
 
-  // Freshest logged weight anywhere (not just in range) — the best "current weight".
-  const latestWeight = (() => {
-    for (let i = entries.length - 1; i >= 0; i--) {
-      const w = entries[i].extracted_json?.body?.weight_today_kg
-      if (w != null) return w
+  // Freshest logged weigh-in anywhere (not just in range), with its date so it
+  // can be age-compared against the profile's own weight field.
+  const latestWeighIn = (() => {
+    let best: { kg: number; date: string } | null = null
+    for (const e of entries) {
+      const w = e.extracted_json?.body?.weight_today_kg
+      if (w == null) continue
+      const date = effectiveDate(e.extracted_json, e.created_at)
+      if (!best || date >= best.date) best = { kg: w, date }
     }
-    return null
+    return best
   })()
 
-  const profile = buildProfile(rawProfile, latestWeight)
-  const days = buildDays(entries, start, end, profile.tdee)
+  const profile = buildProfile(rawProfile, latestWeighIn?.kg ?? null, latestWeighIn?.date ?? null)
+  const { days, estimation } = buildDays(entries, start, end, profile.tdee, options.unloggedDays)
   const summary = summarise(days, profile.weightKg)
 
   // Same-length window immediately before the range, for period-over-period deltas.
   const prevEnd = addDays(start, -1)
   const prevStart = addDays(prevEnd, -(days.length - 1))
-  const prevDays = buildDays(entries, prevStart, prevEnd, profile.tdee)
+  const { days: prevDays } = buildDays(entries, prevStart, prevEnd, profile.tdee, options.unloggedDays)
   const previous = prevDays.some((d) => d.logged) ? summarise(prevDays, profile.weightKg) : null
 
   const energy = analyseEnergy(days)
@@ -2039,13 +2213,16 @@ export function computeAnalytics(
     training,
     recovery,
     profile,
-    gaps
+    gaps,
+    estimation
   )
 
   const inRangeLogged = days.filter((d) => d.logged)
 
   return {
     range: { key: rangeKey, start, end, days: rangeDays, label: rangeLabel },
+    options,
+    estimation,
     profile,
     days,
     previousDays: prevDays,

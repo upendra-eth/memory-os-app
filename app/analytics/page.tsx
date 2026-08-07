@@ -9,7 +9,14 @@ import { Spinner } from '@/components/ui/spinner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useAuth } from '@/components/auth-provider'
 import { getAnalytics } from '@/app/analytics-actions'
-import { RANGE_LABELS, type AnalyticsPayload, type RangeKey } from '@/lib/analytics/types'
+import {
+  DEFAULT_ANALYTICS_OPTIONS,
+  RANGE_LABELS,
+  type AnalyticsOptions,
+  type AnalyticsPayload,
+  type RangeKey,
+  type UnloggedDayMode,
+} from '@/lib/analytics/types'
 import { cn } from '@/lib/utils'
 import { OverviewView } from '@/components/analytics/overview-view'
 import { DiagnosticsView } from '@/components/analytics/diagnostics-view'
@@ -50,14 +57,20 @@ export default function AnalyticsPage() {
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [tab, setTab] = useState('overview')
+  const [unloggedDays, setUnloggedDays] = useState<UnloggedDayMode>(DEFAULT_ANALYTICS_OPTIONS.unloggedDays)
 
   const load = useCallback(
-    async (key: RangeKey, c?: { start: string; end: string }, isRefresh = false) => {
+    async (
+      key: RangeKey,
+      c?: { start: string; end: string },
+      isRefresh = false,
+      options: AnalyticsOptions = { unloggedDays }
+    ) => {
       if (isRefresh) setRefreshing(true)
       else setLoading(true)
       setError(null)
       try {
-        const res = await getAnalytics(key, key === 'custom' ? c : undefined)
+        const res = await getAnalytics(key, key === 'custom' ? c : undefined, options)
         if (res.ok) setData(res.data)
         else setError(res.error)
       } catch (e) {
@@ -68,7 +81,7 @@ export default function AnalyticsPage() {
         setRefreshing(false)
       }
     },
-    []
+    [unloggedDays]
   )
 
   useEffect(() => {
@@ -80,7 +93,7 @@ export default function AnalyticsPage() {
     load(range, custom)
     // `custom` is applied explicitly via the Apply button, not on every keystroke.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profileId, authLoading, profileLoading, range, load])
+  }, [profileId, authLoading, profileLoading, range, unloggedDays, load])
 
   const pickPreset = (key: RangeKey) => {
     setCustomOpen(false)
@@ -184,6 +197,45 @@ export default function AnalyticsPage() {
           </button>
           {rangeCaption && (
             <span className="ml-auto text-[11px] text-muted-foreground tabular-nums">{rangeCaption}</span>
+          )}
+        </div>
+
+        {/* How to read a day with no entry. Defaults to treating it as a rest
+            day, which is what an unlogged day almost always is. */}
+        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border pt-3">
+          <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            Days with no entry
+          </span>
+          <div className="flex rounded-lg border border-border p-0.5">
+            {(
+              [
+                { value: 'assume-rest', label: 'Treat as rest days' },
+                { value: 'exclude', label: 'Leave out' },
+              ] as { value: UnloggedDayMode; label: string }[]
+            ).map((o) => (
+              <button
+                key={o.value}
+                type="button"
+                onClick={() => setUnloggedDays(o.value)}
+                className={cn(
+                  'rounded-md px-2 py-1 text-xs transition-colors',
+                  unloggedDays === o.value
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+          {data && (
+            <span className="text-[11px] text-muted-foreground">
+              {data.estimation.assumedDays > 0
+                ? `${data.estimation.assumedDays} day${data.estimation.assumedDays === 1 ? '' : 's'} filled in${data.estimation.intakePerDayKcal != null ? ` at ${data.estimation.intakePerDayKcal.toLocaleString()} kcal` : ''} — drawn faded in charts and flagged in tables`
+                : unloggedDays === 'assume-rest'
+                  ? 'Every day in range has an entry'
+                  : 'Unlogged days contribute nothing to calorie averages'}
+            </span>
           )}
         </div>
 

@@ -40,12 +40,35 @@ export const RANGE_DAYS: Record<Exclude<RangeKey, 'all' | 'custom'>, number> = {
 // as a zero: charts connect across nulls instead of dipping to the floor.
 // ---------------------------------------------------------------------------
 
+/**
+ * How to treat a calendar day with no entry.
+ *
+ * `assume-rest` is the default because of how people actually log: they record
+ * the days they train and skip the days they don't, so an unlogged day is
+ * overwhelmingly a rest day rather than an unknown one. In that mode a day with
+ * no entry is a non-training day with an ESTIMATED intake (see
+ * `AnalyticsPayload.estimation`), and every such day is flagged `estimated` so
+ * no chart, average or finding can pass a modelled number off as a logged one.
+ *
+ * `exclude` is the strict reading: unlogged days count as not-trained for
+ * frequency, but contribute nothing to any calorie or macro average.
+ */
+export type UnloggedDayMode = 'assume-rest' | 'exclude'
+
+export interface AnalyticsOptions {
+  unloggedDays: UnloggedDayMode
+}
+
+export const DEFAULT_ANALYTICS_OPTIONS: AnalyticsOptions = { unloggedDays: 'assume-rest' }
+
 export interface DayPoint {
   date: string // YYYY-MM-DD
   label: string // "Aug 6"
   weekday: number // 0 = Sunday
   logged: boolean
   entries: number
+  /** True when this day's intake is a modelled estimate rather than logged. */
+  estimated: boolean
 
   // Energy
   intakeKcal: number | null
@@ -109,7 +132,10 @@ export interface DayPoint {
 export interface PeriodSummary {
   days: number
   daysLogged: number
+  /** Days whose calories you actually recorded (never counts estimated days). */
   daysWithFood: number
+  /** Days filled in by the unlogged-day assumption. */
+  daysEstimated: number
   daysTrained: number
   /** Sessions per calendar week across the whole range. */
   trainingPerWeek: number | null
@@ -154,6 +180,11 @@ export interface EnergyPointRow {
   balance: number | null
   cumulative: number | null
   trained: boolean
+  /** This day's intake is modelled, not logged. */
+  estimated: boolean
+  /** `intake` split by source, so one chart can shade the two differently. */
+  intakeLogged: number | null
+  intakeEstimated: number | null
 }
 
 export interface EnergyAnalysis {
@@ -234,6 +265,8 @@ export interface DayTypeStat {
    * drag the comparison toward whichever handful of days happened to be logged.
    */
   daysWithFood: number
+  /** How many of `daysWithFood` carry an estimated intake rather than a logged one. */
+  daysEstimated: number
   avgIntake: number | null
   avgMaintenance: number | null
   avgBalance: number | null
@@ -480,8 +513,28 @@ export interface AnalyticsProfile {
   missing: string[]
 }
 
+/** What was assumed for days with no entry, so every surface can disclose it. */
+export interface EstimationInfo {
+  mode: UnloggedDayMode
+  /** Unlogged days inside the range that were filled with an estimate. */
+  assumedDays: number
+  /** The intake assigned to each of them, kcal. Null when there was no basis to estimate from. */
+  intakePerDayKcal: number | null
+  /** Plain-English description of where that number came from. */
+  basis: string
+  /**
+   * How much the range's total energy balance moves if the real intake on those
+   * days was 300 kcal higher or lower. The honest measure of how much the
+   * assumption is carrying.
+   */
+  sensitivityKcal: number
+  sensitivityKg: number
+}
+
 export interface AnalyticsPayload {
   range: { key: RangeKey; start: string; end: string; days: number; label: string }
+  options: AnalyticsOptions
+  estimation: EstimationInfo
   profile: AnalyticsProfile
   days: DayPoint[]
   /** The equal-length window immediately before the range, for overlay comparisons. */

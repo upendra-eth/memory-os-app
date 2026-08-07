@@ -3,7 +3,13 @@
 import { createClient } from '@/lib/supabase/server'
 import type { ExtractedJSON } from '@/lib/extraction-schema'
 import { computeAnalytics, type RawEntry } from '@/lib/analytics/engine'
-import { RANGE_LABELS, type AnalyticsPayload, type RangeKey } from '@/lib/analytics/types'
+import {
+  DEFAULT_ANALYTICS_OPTIONS,
+  RANGE_LABELS,
+  type AnalyticsOptions,
+  type AnalyticsPayload,
+  type RangeKey,
+} from '@/lib/analytics/types'
 
 async function getAuthProfileId(): Promise<{ userId: string; supabase: any } | null> {
   const supabase = await createClient()
@@ -32,7 +38,8 @@ async function getAuthProfileId(): Promise<{ userId: string; supabase: any } | n
  */
 export async function getAnalytics(
   rangeKey: RangeKey = '90d',
-  custom?: { start?: string; end?: string }
+  custom?: { start?: string; end?: string },
+  options: AnalyticsOptions = DEFAULT_ANALYTICS_OPTIONS
 ): Promise<{ ok: true; data: AnalyticsPayload } | { ok: false; error: string }> {
   const auth = await getAuthProfileId()
   if (!auth) return { ok: false, error: 'Not signed in' }
@@ -46,7 +53,7 @@ export async function getAnalytics(
     auth.supabase
       .from('user_profile')
       .select(
-        'current_weight_kg, target_weight_kg, height_cm, gender, age, dob, activity_level, nutrition_goal, fitness_goal'
+        'current_weight_kg, target_weight_kg, height_cm, gender, age, dob, activity_level, nutrition_goal, fitness_goal, updated_at'
       )
       .eq('id', auth.userId)
       .maybeSingle(),
@@ -70,7 +77,8 @@ export async function getAnalytics(
       rangeKey === 'custom' && custom?.start && custom?.end
         ? `${custom.start} → ${custom.end}`
         : RANGE_LABELS[rangeKey],
-      custom
+      custom,
+      options
     )
     return { ok: true, data }
   } catch (e) {

@@ -84,6 +84,11 @@ export function EnergyView({ data }: { data: AnalyticsPayload }) {
         title="Every day: what you ate against what you burn"
         subtitle="Bars are intake, the line is your maintenance. Training burn is shown separately below — it is already inside the maintenance figure, so subtracting it twice would double-count."
         height={300}
+        footnote={
+          data.estimation.assumedDays > 0
+            ? `Faded, dashed bars are the ${data.estimation.assumedDays} days with no entry, filled in at ${data.estimation.intakePerDayKcal?.toLocaleString()} kcal. ${data.estimation.basis}`
+            : undefined
+        }
       >
         <ComposedChart data={rows} margin={{ top: 4, right: 8, left: -8, bottom: 0 }}>
           <CartesianGrid {...gridProps} />
@@ -93,24 +98,45 @@ export function EnergyView({ data }: { data: AnalyticsPayload }) {
             content={
               <VizTooltip
                 unit=" kcal"
-                extra={(d) => (d ? [{ label: 'Day type', value: d.trained ? 'Trained' : 'Rest' }] : [])}
+                extra={(d) =>
+                  d
+                    ? [
+                        { label: 'Day type', value: d.trained ? 'Trained' : 'Rest' },
+                        { label: 'Source', value: d.estimated ? 'estimated — no entry' : 'logged' },
+                      ]
+                    : []
+                }
               />
             }
           />
           <Legend wrapperStyle={{ fontSize: 11 }} iconType="circle" iconSize={8} />
-          <Bar dataKey="intake" name="Intake" radius={[3, 3, 0, 0]} maxBarSize={22}>
+          {/* Two bars in one slot: logged days solid, estimated days faded, so a
+              modelled number can never be mistaken for a recorded one. */}
+          <Bar dataKey="intakeLogged" stackId="intake" name="Logged intake" radius={[3, 3, 0, 0]} maxBarSize={22}>
             {rows.map((r) => (
               // Colour carries day type, which the tooltip also states outright.
               <Cell key={r.date} fill={r.trained ? VIZ.s2 : VIZ.s4} />
             ))}
           </Bar>
+          <Bar
+            dataKey="intakeEstimated"
+            stackId="intake"
+            name="Estimated (no entry)"
+            radius={[3, 3, 0, 0]}
+            maxBarSize={22}
+            fill={VIZ.s4}
+            fillOpacity={0.3}
+            stroke={VIZ.s4}
+            strokeWidth={1}
+            strokeDasharray="2 2"
+          />
           <Line type="monotone" dataKey="maintenance" name="Maintenance" stroke={VIZ.s1} strokeWidth={2} dot={false} connectNulls />
         </ComposedChart>
       </ChartCard>
       <SwatchLegend
         items={[
-          { color: VIZ.s2, label: 'Intake on a training day' },
-          { color: VIZ.s4, label: 'Intake on a rest day' },
+          { color: VIZ.s2, label: 'Logged intake, training day' },
+          { color: VIZ.s4, label: 'Logged intake, rest day' },
           { color: VIZ.s1, label: 'Maintenance' },
         ]}
       />
@@ -136,6 +162,7 @@ export function EnergyView({ data }: { data: AnalyticsPayload }) {
                       ? [
                           { label: 'Intake', value: fmtKcal(d.intake) },
                           { label: 'Day type', value: d.trained ? 'Trained' : 'Rest' },
+                          { label: 'Source', value: d.estimated ? 'estimated — no entry' : 'logged' },
                         ]
                       : []
                   }
@@ -300,10 +327,15 @@ export function EnergyView({ data }: { data: AnalyticsPayload }) {
             { key: 'days', header: 'Days', align: 'right', render: (r) => `${r.days}` },
             {
               key: 'withfood',
-              header: 'With food logged',
+              header: 'With intake',
               align: 'right',
               render: (r) => (
-                <span className={r.daysWithFood < 3 ? 'text-amber-600 dark:text-amber-400' : undefined}>{r.daysWithFood}</span>
+                <span className={r.daysWithFood < 3 ? 'text-amber-600 dark:text-amber-400' : undefined}>
+                  {r.daysWithFood}
+                  {r.daysEstimated > 0 && (
+                    <span className="ml-1 text-[10px] text-muted-foreground">({r.daysEstimated} est.)</span>
+                  )}
+                </span>
               ),
             },
             { key: 'intake', header: 'Avg intake', align: 'right', render: (r) => fmtKcal(r.avgIntake) },
