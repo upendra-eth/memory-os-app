@@ -42,16 +42,20 @@ import {
   tickInterval,
 } from './chart-kit'
 import { Info } from 'lucide-react'
+import { QuickWeightLog } from './quick-weight-log'
 
-export function WeightView({ data }: { data: AnalyticsPayload }) {
+export function WeightView({ data, onLogged }: { data: AnalyticsPayload; onLogged: () => void }) {
   const { weight, summary, profile, monthly, weekly, days } = data
 
   if (weight.observations === 0) {
     return (
-      <EmptyPanel
-        title="No weigh-ins in this range"
-        body="Body weight is the one measurement that settles every disagreement between what you think you ate and what your body did. Mention your morning weight in your daily paste — even three readings unlocks the trend line and your real maintenance calories."
-      />
+      <div className="space-y-5">
+        <QuickWeightLog lastKg={profile.weightKg} onLogged={onLogged} />
+        <EmptyPanel
+          title="No weigh-ins in this range"
+          body="Body weight is the one measurement that settles every disagreement between what you think you ate and what your body did. Log it above, or mention it in your daily paste — even three readings unlocks the trend line and your real maintenance calories."
+        />
+      </div>
     )
   }
 
@@ -79,6 +83,8 @@ export function WeightView({ data }: { data: AnalyticsPayload }) {
 
   return (
     <div className="space-y-5">
+      <QuickWeightLog lastKg={weight.lastKg ?? profile.weightKg} onLogged={onLogged} />
+
       {/* ---- Headline numbers ---- */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <HeroStat

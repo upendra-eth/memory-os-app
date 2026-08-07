@@ -389,6 +389,37 @@ export async function processAndSaveEntry(
 }
 
 /**
+ * One-tap weight log — a full entry with only `body.weight_today_kg` set.
+ *
+ * The trend line, `trueMaintenanceKcal`, and every forecast on /analytics only
+ * ever read a DATED weigh-in from an entry — never `user_profile.current_weight_kg`,
+ * which is a single "current" fallback that gets overwritten on every edit and
+ * carries no history. This is the lightweight way to put a dated point on the
+ * trend without writing a full three-section paste every morning.
+ *
+ * Goes through the same `saveEntry()` path as a normal paste, so it gets the
+ * same entity/aggregate side effects and the same backfill-date handling.
+ */
+export async function quickLogWeight(
+  weightKg: number,
+  date?: string
+): Promise<{ success: boolean; logDate?: string; error?: string }> {
+  if (!Number.isFinite(weightKg) || weightKg < 20 || weightKg > 400) {
+    return { success: false, error: 'Enter a realistic weight in kg' }
+  }
+
+  const narrative = `Weight: ${weightKg} kg`
+  const result = await saveEntry({
+    rawText: narrative,
+    narrative,
+    extractedJson: { body: { weight_today_kg: weightKg } },
+    logDate: date,
+  })
+
+  return { success: result.success, logDate: result.logDate, error: result.error }
+}
+
+/**
  * What's already logged for a given day — powers the "you've already logged X
  * for this day, your new entry will be added" hint in the Add form.
  */

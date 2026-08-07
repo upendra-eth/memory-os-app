@@ -330,7 +330,7 @@ export default function AnalyticsPage() {
               <EnergyView data={data} />
             </TabsContent>
             <TabsContent value="weight" className="mt-5 space-y-5">
-              <WeightView data={data} />
+              <WeightView data={data} onLogged={() => load(range, custom, true)} />
             </TabsContent>
             <TabsContent value="nutrition" className="mt-5 space-y-5">
               <NutritionView data={data} />
